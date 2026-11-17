@@ -1,7 +1,10 @@
 require('dotenv').config();
 
+const { validateAuthConfig } = require('./config/env');
 const app = require('./app');
 const prisma = require('./config/database');
+
+validateAuthConfig();
 
 const port = Number(process.env.PORT || 5000);
 let server;
