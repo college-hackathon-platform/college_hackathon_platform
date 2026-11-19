@@ -1,129 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import './App.css'
-import { getHealth } from './services/healthService'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useAuth } from './context/useAuth'
+import Login from './pages/auth/Login'
+import Register from './pages/auth/Register'
+import NotFound from './pages/NotFound'
+import RoleLandingPage from './pages/RoleLandingPage'
+import StatusPage from './pages/StatusPage'
+import Unauthorized from './pages/Unauthorized'
+import ProtectedRoute from './routes/ProtectedRoute'
+import RoleRoute from './routes/RoleRoute'
+import './auth.css'
+
+const rolePaths = {
+  ADMIN: '/admin',
+  FACULTY: '/faculty',
+  STUDENT: '/student',
+}
+
+function HomeRedirect() {
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  if (isLoading) {
+    return <main className="route-loading" aria-live="polite">Restoring your session…</main>
+  }
+
+  return <Navigate to={isAuthenticated ? rolePaths[user.role] || '/unauthorized' : '/login'} replace />
+}
 
 function App() {
-  const [health, setHealth] = useState({
-    backend: 'checking',
-    database: 'checking',
-    message: '',
-    error: '',
-  })
-  const controllerRef = useRef(null)
+  const { isLoading } = useAuth()
 
-  const loadHealth = useCallback(async (signal) => {
-    try {
-      const data = await getHealth({ signal })
-      return {
-        backend:
-          data.success === true || data.services?.api === 'operational'
-            ? 'connected'
-            : 'failed',
-        database: data.services?.database === 'connected' ? 'connected' : 'unknown',
-        message: data.message || '',
-        error: '',
-      }
-    } catch (error) {
-      const data = error.response?.data
-      return {
-        backend: data?.services?.api === 'operational' ? 'connected' : 'failed',
-        database:
-          data?.services?.database === 'unavailable'
-            ? 'unavailable'
-            : data?.services?.database === 'connected'
-              ? 'connected'
-              : 'unknown',
-        message: data?.message || '',
-        error: data?.message || 'Unable to reach the backend. Check that it is running and try again.',
-      }
-    }
-  }, [])
-
-  const checkHealth = useCallback(async () => {
-    controllerRef.current?.abort()
-    const controller = new AbortController()
-    controllerRef.current = controller
-    setHealth({
-      backend: 'checking',
-      database: 'checking',
-      message: '',
-      error: '',
-    })
-
-    const result = await loadHealth(controller.signal)
-    if (!controller.signal.aborted) {
-      setHealth(result)
-    }
-  }, [loadHealth])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    controllerRef.current = controller
-    void loadHealth(controller.signal).then((result) => {
-      if (!controller.signal.aborted) {
-        setHealth(result)
-      }
-    })
-    return () => controllerRef.current?.abort()
-  }, [loadHealth])
-
-  const statusLabel = (status) => {
-    if (status === 'checking') return 'Checking...'
-    if (status === 'connected') return 'Connected successfully'
-    if (status === 'unavailable') return 'Unavailable'
-    if (status === 'failed') return 'Connection failed'
-    return 'Not verified'
+  if (isLoading) {
+    return <main className="route-loading" aria-live="polite">Restoring your session…</main>
   }
 
   return (
-    <main className="status-page">
-      <section className="status-panel" aria-labelledby="page-title">
-        <p className="eyebrow">Development environment</p>
-        <h1 id="page-title">College Hackathon Platform</h1>
-        <p className="intro">Frontend and backend connectivity status</p>
+    <Routes>
+      <Route path="/" element={<HomeRedirect />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/status" element={<StatusPage />} />
+      <Route path="/unauthorized" element={<Unauthorized />} />
 
-        <div className="status-list" aria-live="polite">
-          <div className="status-row">
-            <span>Frontend</span>
-            <span className="status-value connected">React application running</span>
-          </div>
-          <div className="status-row">
-            <span>Backend</span>
-            <span className={`status-value ${health.backend}`}>
-              {statusLabel(health.backend)}
-            </span>
-          </div>
-          <div className="status-row">
-            <span>Database</span>
-            <span className={`status-value ${health.database}`}>
-              {statusLabel(health.database)}
-            </span>
-          </div>
-        </div>
+      <Route element={<ProtectedRoute />}>
+        <Route element={<RoleRoute allowedRoles={['ADMIN']} />}>
+          <Route path="/admin" element={<RoleLandingPage />} />
+        </Route>
+        <Route element={<RoleRoute allowedRoles={['FACULTY']} />}>
+          <Route path="/faculty" element={<RoleLandingPage />} />
+        </Route>
+        <Route element={<RoleRoute allowedRoles={['STUDENT']} />}>
+          <Route path="/student" element={<RoleLandingPage />} />
+        </Route>
+      </Route>
 
-        {health.message && (
-          <div className="api-response">
-            <h2>API response</h2>
-            <p>{health.message}</p>
-          </div>
-        )}
-
-        {health.error && (
-          <p className="error-message" role="alert">
-            {health.error}
-          </p>
-        )}
-
-        <button
-          type="button"
-          className="retry-button"
-          onClick={() => void checkHealth()}
-          disabled={health.backend === 'checking'}
-        >
-          {health.backend === 'checking' ? 'Checking...' : 'Retry connection'}
-        </button>
-      </section>
-    </main>
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   )
 }
 

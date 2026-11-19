@@ -32,6 +32,11 @@ body {
   min-height: 100svh;
 }
 
+button,
+input {
+  font: inherit;
+}
+
 h2 {
   color: inherit;
 }

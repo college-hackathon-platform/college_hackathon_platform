@@ -1,16 +1,33 @@
-# React + Vite
+# College Hackathon Platform frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React/Vite frontend provides student registration, sign-in, session restoration, and role-protected temporary landing pages.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Install dependencies and configure the backend URL:
 
-## React Compiler
+```powershell
+npm install
+if (-not (Test-Path .env.development)) {
+  Copy-Item .env.example .env.development
+}
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Set `VITE_API_BASE_URL` in `.env.development` to the backend API base URL, normally `http://localhost:5000/api/v1`. Vite environment values are public; do not put credentials or secrets in them.
 
-## Expanding the ESLint configuration
+## Authentication behavior
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- The access token is kept in application memory only.
+- The refresh token stays in the backend's HttpOnly cookie and is never read by frontend JavaScript.
+- API requests send credentials so the browser can include that cookie on refresh and logout.
+- On startup, the app attempts to restore a session. Concurrent expired-token requests share a single refresh operation.
+- Frontend role routes are navigation checks only; backend authentication and RBAC remain authoritative.
+
+Routes include `/login`, `/register`, `/admin`, `/faculty`, `/student`, `/unauthorized`, and `/status`.
+
+## Commands
+
+- `npm run dev` — start the Vite development server.
+- `npm run lint` — run ESLint.
+- `npm run build` — create a production build.

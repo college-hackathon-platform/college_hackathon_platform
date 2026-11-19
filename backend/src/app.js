@@ -4,6 +4,9 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const prisma = require('./config/database');
 const authRoutes = require('./modules/auth/auth.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
+const facultyRoutes = require('./modules/faculty/faculty.routes');
+const studentRoutes = require('./modules/student/student.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -52,6 +55,9 @@ app.get('/api/v1/health', async (req, res) => {
 });
 
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/faculty', facultyRoutes);
+app.use('/api/v1/student', studentRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({

@@ -28,28 +28,9 @@ async function authenticate(req, res, next) {
     });
   }
 
+  let decoded;
   try {
-    const decoded = verifyAccessToken(token);
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.sub },
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid access token.',
-      });
-    }
-
-    if (user.status !== 'ACTIVE') {
-      return res.status(403).json({
-        success: false,
-        message: 'This account is not active and cannot access this resource.',
-      });
-    }
-
-    req.user = sanitizeUser(user);
-    return next();
+    decoded = verifyAccessToken(token);
   } catch (error) {
     const message = error && error.name === 'TokenExpiredError'
       ? 'Access token has expired.'
@@ -60,6 +41,39 @@ async function authenticate(req, res, next) {
       message,
     });
   }
+
+  if (!decoded || typeof decoded.sub !== 'string' || !decoded.sub) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid access token.',
+    });
+  }
+
+  let user;
+  try {
+    user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+    });
+  } catch (error) {
+    return next(error);
+  }
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid access token.',
+    });
+  }
+
+  if (user.status !== 'ACTIVE') {
+    return res.status(403).json({
+      success: false,
+      message: 'This account is not active and cannot access this resource.',
+    });
+  }
+
+  req.user = sanitizeUser(user);
+  return next();
 }
 
 module.exports = {
