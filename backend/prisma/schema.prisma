@@ -22,6 +22,20 @@ enum AccountStatus {
   SUSPENDED
 }
 
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  REGISTRATION_CLOSED
+  COMPLETED
+  CANCELLED
+}
+
+enum EventMode {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   name         String        @db.VarChar(255)
@@ -34,8 +48,46 @@ model User {
   updatedAt    DateTime      @updatedAt
 
   refreshTokens RefreshToken[]
+  createdEvents Event[] @relation("EventCreator")
 
   @@index([email])
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+  @@index([role, status, createdAt])
+}
+
+model Event {
+  id                     String      @id @default(uuid()) @db.Uuid
+  title                  String      @db.VarChar(180)
+  slug                   String      @unique @db.VarChar(220)
+  shortDescription       String      @default("") @db.VarChar(300)
+  description            String      @default("") @db.Text
+  status                 EventStatus @default(DRAFT)
+  mode                   EventMode   @default(ONLINE)
+  startDate              DateTime?
+  endDate                DateTime?
+  registrationStartDate  DateTime?
+  registrationEndDate    DateTime?
+  venue                  String?     @db.VarChar(255)
+  registrationCapacity   Int?
+  minTeamSize            Int         @default(1)
+  maxTeamSize            Int         @default(1)
+  eligibility            String?     @db.VarChar(1000)
+  rules                  String?     @db.Text
+  createdById            String      @db.Uuid
+  publishedAt            DateTime?
+  cancelledAt            DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  createdBy User @relation("EventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([mode])
+  @@index([startDate])
+  @@index([createdAt])
+  @@index([status, mode, startDate])
 }
 
 model RefreshToken {

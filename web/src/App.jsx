@@ -8,6 +8,11 @@ import StatusPage from './pages/StatusPage'
 import Unauthorized from './pages/Unauthorized'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
+import AdminLayout from './components/admin/AdminLayout'
+import AdminOverview from './pages/admin/AdminOverview'
+import PlaceholderPage from './components/admin/PlaceholderPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminEventsPage from './pages/admin/AdminEventsPage'
 import './auth.css'
 
 const rolePaths = {
@@ -43,7 +48,17 @@ function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<RoleRoute allowedRoles={['ADMIN']} />}>
-          <Route path="/admin" element={<RoleLandingPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminOverview />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="events" element={<AdminEventsPage />} />
+            <Route path="registrations" element={<PlaceholderPage title="Teams & Registrations" description="Review teams and event registrations." moduleName="Teams and registrations" />} />
+            <Route path="faculty" element={<PlaceholderPage title="Faculty Management" description="Manage faculty accounts and assignments." moduleName="Faculty management" />} />
+            <Route path="evaluators" element={<PlaceholderPage title="Evaluators" description="Manage event-specific evaluator assignments." moduleName="Evaluator management" />} />
+            <Route path="analytics" element={<PlaceholderPage title="Reports & Analytics" description="Review platform reports and analytics." moduleName="Reports and analytics" />} />
+            <Route path="settings" element={<PlaceholderPage title="Platform Settings" description="Configure platform-wide preferences." moduleName="Platform settings" />} />
+            <Route path="*" element={<PlaceholderPage title="Page not found" description="The requested Admin page could not be found." moduleName="This page" />} />
+          </Route>
         </Route>
         <Route element={<RoleRoute allowedRoles={['FACULTY']} />}>
           <Route path="/faculty" element={<RoleLandingPage />} />
