@@ -4,6 +4,7 @@ const {
   createTeamSchema,
   joinTeamSchema,
   listMyTeamsSchema,
+  listAvailableEventsSchema,
 } = require('./team.validation');
 const teamService = require('./team.service');
 
@@ -24,14 +25,20 @@ async function createTeam(req, res, next) {
     if (error?.name === 'ZodError') return zodError(res, error, 'Invalid team data.');
     return next(error);
   }
+}
 
-  async function listAvailableEvents(req, res, next) {
-    try {
-      const events = await teamService.listAvailableEvents(req.user.id);
-      return res.status(200).json({ success: true, message: 'Available events retrieved successfully.', data: { events } });
-    } catch (error) {
-      return next(error);
-    }
+async function listAvailableEvents(req, res, next) {
+  try {
+    const payload = listAvailableEventsSchema.parse(req.query);
+    const result = await teamService.listAvailableEvents(req.user.id, payload);
+    return res.status(200).json({
+      success: true,
+      message: 'Available events retrieved successfully.',
+      data: result,
+    });
+  } catch (error) {
+    if (error?.name === 'ZodError') return zodError(res, error, 'Invalid event pagination.');
+    return next(error);
   }
 }
 

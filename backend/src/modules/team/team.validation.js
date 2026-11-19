@@ -18,4 +18,16 @@ const listMyTeamsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 }).strict();
 
-module.exports = { teamIdSchema, memberIdSchema, createTeamSchema, joinTeamSchema, listMyTeamsSchema };
+const listAvailableEventsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+}).strict();
+
+module.exports = {
+  teamIdSchema,
+  memberIdSchema,
+  createTeamSchema,
+  joinTeamSchema,
+  listMyTeamsSchema,
+  listAvailableEventsSchema,
+};

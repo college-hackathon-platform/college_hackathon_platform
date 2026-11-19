@@ -31,7 +31,7 @@ function assertRegistrationWindow(event) {
   if (now > event.registrationEndDate) throw httpError(409, 'Event registration has ended.');
 }
 
-async function listAvailableEvents(userId) {
+async function listAvailableEvents(userId, { page, limit }) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, role: true, status: true },
@@ -40,30 +40,67 @@ async function listAvailableEvents(userId) {
   if (user.status !== 'ACTIVE') throw httpError(403, 'Your account must be active.');
 
   const now = new Date();
-  return prisma.event.findMany({
-    where: {
-      status: 'PUBLISHED',
-      registrationStartDate: { not: null, lte: now },
-      registrationEndDate: { not: null, gte: now },
+  const where = {
+    status: 'PUBLISHED',
+    registrationStartDate: { not: null, lte: now },
+    registrationEndDate: { not: null, gte: now },
+  };
+  const eventSelect = {
+    id: true,
+    title: true,
+    slug: true,
+    shortDescription: true,
+    description: true,
+    mode: true,
+    startDate: true,
+    endDate: true,
+    registrationStartDate: true,
+    registrationEndDate: true,
+    registrationCapacity: true,
+    minTeamSize: true,
+    maxTeamSize: true,
+    venue: true,
+    _count: {
+      select: {
+        registrations: {
+          where: { status: { in: ['SUBMITTED', 'CONFIRMED', 'WAITLISTED'] } },
+        },
+      },
     },
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      shortDescription: true,
-      description: true,
-      mode: true,
-      startDate: true,
-      endDate: true,
-      registrationStartDate: true,
-      registrationEndDate: true,
-      registrationCapacity: true,
-      minTeamSize: true,
-      maxTeamSize: true,
-      venue: true,
-    },
-    orderBy: { startDate: 'asc' },
+  };
+
+  const [events, total] = await Promise.all([
+    prisma.event.findMany({
+      where,
+      select: eventSelect,
+      orderBy: { startDate: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.event.count({ where }),
+  ]);
+
+  const eventsWithAvailability = events.map((event) => {
+    let availableCapacity = null;
+    if (event.registrationCapacity !== null) {
+      const occupiedCapacity = event._count.registrations;
+      if (occupiedCapacity >= event.registrationCapacity) return null;
+      availableCapacity = event.registrationCapacity - occupiedCapacity;
+    }
+    const { _count, ...safeEvent } = event;
+    return { ...safeEvent, availableCapacity };
   });
+
+  const availableEvents = eventsWithAvailability.filter(Boolean);
+  return {
+    events: availableEvents,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
 async function createTeam(userId, payload) {
