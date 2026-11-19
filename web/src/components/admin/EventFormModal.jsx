@@ -2,7 +2,6 @@ import { useState } from 'react'
 
 const emptyForm = {
   title: '',
-  slug: '',
   shortDescription: '',
   description: '',
   mode: 'ONLINE',
@@ -31,10 +30,9 @@ function numberOrNull(value) {
   return Number.isInteger(number) ? number : value
 }
 
-export default function EventFormModal({ event, onClose, onSubmit, submitting, error }) {
+export default function EventFormModal({ event, onClose, onSubmit, submitting, error, fieldErrors = {} }) {
   const [form, setForm] = useState(() => event ? {
       title: event.title || '',
-      slug: event.slug || '',
       shortDescription: event.shortDescription || '',
       description: event.description || '',
       mode: event.mode || 'ONLINE',
@@ -58,7 +56,6 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
     eventObject.preventDefault()
     const payload = {
       title: form.title.trim(),
-      slug: form.slug.trim(),
       shortDescription: form.shortDescription.trim(),
       description: form.description.trim(),
       mode: form.mode,
@@ -98,9 +95,9 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
 
             <fieldset className="grid gap-4">
               <legend className="mb-1 text-sm font-bold text-slate-900">Basic Information</legend>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div>
                 <label className={labelClass}>Event title<input className={inputClass} value={form.title} onChange={(e) => setField('title', e.target.value)} minLength={3} maxLength={180} required /></label>
-                <label className={labelClass}>URL slug<input className={`${inputClass} font-mono`} value={form.slug} onChange={(e) => setField('slug', e.target.value)} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="campus-hackathon-2026" /></label>
+                {fieldErrors.title && <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.title}</p>}
               </div>
               <label className={labelClass}>Short description<input className={inputClass} value={form.shortDescription} onChange={(e) => setField('shortDescription', e.target.value)} maxLength={300} /></label>
               <label className={labelClass}>Description<textarea className={`${inputClass} min-h-28 py-3`} value={form.description} onChange={(e) => setField('description', e.target.value)} maxLength={10000} /></label>
@@ -112,6 +109,7 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
                 <label className={labelClass}>Event start<input type="datetime-local" className={inputClass} value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} /></label>
                 <label className={labelClass}>Event end<input type="datetime-local" className={inputClass} value={form.endDate} onChange={(e) => setField('endDate', e.target.value)} /></label>
               </div>
+              {(fieldErrors.startDate || fieldErrors.endDate) && <p className="text-xs font-semibold text-red-600">{fieldErrors.startDate || fieldErrors.endDate}</p>}
             </fieldset>
 
             <fieldset className="grid gap-4 border-t border-slate-100 pt-5">
@@ -121,6 +119,7 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
                 <label className={labelClass}>Registration closes<input type="datetime-local" className={inputClass} value={form.registrationEndDate} onChange={(e) => setField('registrationEndDate', e.target.value)} /></label>
               </div>
               <label className={labelClass}>Registration capacity<input type="number" min="1" className={inputClass} value={form.registrationCapacity} onChange={(e) => setField('registrationCapacity', e.target.value)} placeholder="Leave empty for unlimited" /></label>
+              {fieldErrors.registrationCapacity && <p className="text-xs font-semibold text-red-600">{fieldErrors.registrationCapacity}</p>}
             </fieldset>
 
             <fieldset className="grid gap-4 border-t border-slate-100 pt-5">
@@ -129,6 +128,7 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
                 <label className={labelClass}>Minimum team size<input type="number" min="1" className={inputClass} value={form.minTeamSize} onChange={(e) => setField('minTeamSize', e.target.value)} required /></label>
                 <label className={labelClass}>Maximum team size<input type="number" min="1" className={inputClass} value={form.maxTeamSize} onChange={(e) => setField('maxTeamSize', e.target.value)} required /></label>
               </div>
+              {(fieldErrors.minTeamSize || fieldErrors.maxTeamSize) && <p className="text-xs font-semibold text-red-600">{fieldErrors.minTeamSize || fieldErrors.maxTeamSize}</p>}
             </fieldset>
 
             <fieldset className="grid gap-4 border-t border-slate-100 pt-5">
@@ -137,6 +137,7 @@ export default function EventFormModal({ event, onClose, onSubmit, submitting, e
                 <label className={labelClass}>Event mode<select className={inputClass} value={form.mode} onChange={(e) => setField('mode', e.target.value)}><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="HYBRID">Hybrid</option></select></label>
                 <label className={labelClass}>Venue{(form.mode === 'OFFLINE' || form.mode === 'HYBRID') && <span className="text-red-600"> *</span>}<input className={inputClass} value={form.venue} onChange={(e) => setField('venue', e.target.value)} required={form.mode !== 'ONLINE'} /></label>
               </div>
+              {fieldErrors.venue && <p className="text-xs font-semibold text-red-600">{fieldErrors.venue}</p>}
             </fieldset>
 
             <fieldset className="grid gap-4 border-t border-slate-100 pt-5">

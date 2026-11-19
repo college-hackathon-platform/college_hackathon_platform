@@ -13,6 +13,8 @@ import AdminOverview from './pages/admin/AdminOverview'
 import PlaceholderPage from './components/admin/PlaceholderPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
+import AdminRegistrationsPage from './pages/admin/AdminRegistrationsPage'
+import StudentWorkspace from './pages/student/StudentWorkspace'
 import './auth.css'
 
 const rolePaths = {
@@ -52,7 +54,7 @@ function App() {
             <Route index element={<AdminOverview />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="events" element={<AdminEventsPage />} />
-            <Route path="registrations" element={<PlaceholderPage title="Teams & Registrations" description="Review teams and event registrations." moduleName="Teams and registrations" />} />
+            <Route path="registrations" element={<AdminRegistrationsPage />} />
             <Route path="faculty" element={<PlaceholderPage title="Faculty Management" description="Manage faculty accounts and assignments." moduleName="Faculty management" />} />
             <Route path="evaluators" element={<PlaceholderPage title="Evaluators" description="Manage event-specific evaluator assignments." moduleName="Evaluator management" />} />
             <Route path="analytics" element={<PlaceholderPage title="Reports & Analytics" description="Review platform reports and analytics." moduleName="Reports and analytics" />} />
@@ -64,7 +66,7 @@ function App() {
           <Route path="/faculty" element={<RoleLandingPage />} />
         </Route>
         <Route element={<RoleRoute allowedRoles={['STUDENT']} />}>
-          <Route path="/student" element={<RoleLandingPage />} />
+          <Route path="/student" element={<StudentWorkspace />} />
         </Route>
       </Route>
 

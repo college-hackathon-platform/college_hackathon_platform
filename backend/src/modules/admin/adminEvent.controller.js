@@ -8,9 +8,16 @@ const {
 const adminEventService = require('./adminEvent.service');
 
 function zodError(res, error, fallback) {
+  const fieldErrors = {};
+  for (const issue of error.issues || []) {
+    const path = issue.path?.join('.') || 'request';
+    if (!fieldErrors[path]) fieldErrors[path] = issue.message;
+  }
+
   return res.status(422).json({
     success: false,
     message: error.issues[0]?.message || fallback,
+    errors: fieldErrors,
   });
 }
 

@@ -36,6 +36,32 @@ enum EventMode {
   HYBRID
 }
 
+enum TeamStatus {
+  ACTIVE
+  ARCHIVED
+  DISBANDED
+}
+
+enum TeamMemberRole {
+  LEADER
+  MEMBER
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum RegistrationStatus {
+  DRAFT
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  WAITLISTED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   name         String        @db.VarChar(255)
@@ -49,6 +75,10 @@ model User {
 
   refreshTokens RefreshToken[]
   createdEvents Event[] @relation("EventCreator")
+  ledTeams Team[] @relation("TeamLeader")
+  teamMemberships TeamMember[]
+  reviewedRegistrations EventRegistration[] @relation("RegistrationReviewer")
+  registrationStatusChanges RegistrationStatusHistory[] @relation("RegistrationStatusChanger")
 
   @@index([email])
   @@index([role])
@@ -82,12 +112,98 @@ model Event {
   updatedAt              DateTime    @updatedAt
 
   createdBy User @relation("EventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  teams Team[]
+  registrations EventRegistration[]
 
   @@index([status])
   @@index([mode])
   @@index([startDate])
   @@index([createdAt])
   @@index([status, mode, startDate])
+}
+
+model Team {
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String     @db.VarChar(120)
+  description  String?    @db.Text
+  inviteCodeHash String?  @db.VarChar(255)
+  inviteExpiresAt DateTime?
+  inviteRevokedAt DateTime?
+  eventId      String     @db.Uuid
+  leaderId     String     @db.Uuid
+  status       TeamStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  leader User @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: Restrict)
+  members TeamMember[]
+  registrations EventRegistration[]
+
+  @@unique([eventId, name])
+  @@index([eventId])
+  @@index([leaderId])
+  @@index([status])
+}
+
+model TeamMember {
+  id       String           @id @default(uuid()) @db.Uuid
+  teamId   String           @db.Uuid
+  userId   String           @db.Uuid
+  role     TeamMemberRole
+  status   TeamMemberStatus @default(ACTIVE)
+  joinedAt DateTime?
+  leftAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@index([userId, status])
+}
+
+model EventRegistration {
+  id              String             @id @default(uuid()) @db.Uuid
+  eventId         String             @db.Uuid
+  teamId          String             @db.Uuid
+  status          RegistrationStatus @default(DRAFT)
+  registeredAt    DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?            @db.Uuid
+  rejectionReason String?            @db.Text
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  reviewedBy User? @relation("RegistrationReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  history RegistrationStatusHistory[]
+
+  @@unique([eventId, teamId])
+  @@index([eventId])
+  @@index([teamId])
+  @@index([status])
+  @@index([eventId, status])
+}
+
+model RegistrationStatusHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  registrationId String             @db.Uuid
+  fromStatus     RegistrationStatus
+  toStatus       RegistrationStatus
+  changedById    String             @db.Uuid
+  reason         String?            @db.Text
+  createdAt      DateTime           @default(now())
+
+  registration EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  changedBy User @relation("RegistrationStatusChanger", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([registrationId])
+  @@index([createdAt])
 }
 
 model RefreshToken {

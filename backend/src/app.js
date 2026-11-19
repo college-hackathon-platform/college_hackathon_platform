@@ -7,6 +7,8 @@ const authRoutes = require('./modules/auth/auth.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const facultyRoutes = require('./modules/faculty/faculty.routes');
 const studentRoutes = require('./modules/student/student.routes');
+const teamRoutes = require('./modules/team/team.routes');
+const registrationRoutes = require('./modules/registration/registration.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -58,6 +60,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/faculty', facultyRoutes);
 app.use('/api/v1/student', studentRoutes);
+app.use('/api/v1/teams', teamRoutes);
+app.use('/api/v1/registrations', registrationRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({

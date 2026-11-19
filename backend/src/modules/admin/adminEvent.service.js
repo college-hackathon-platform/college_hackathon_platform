@@ -27,24 +27,53 @@ const EVENT_SELECT = {
   createdBy: { select: { id: true, name: true, email: true, role: true } },
 };
 
-function httpError(statusCode, message) {
+function httpError(statusCode, message, fieldErrors = null) {
   const error = new Error(message);
   error.statusCode = statusCode;
+  if (fieldErrors) error.errors = fieldErrors;
   return error;
 }
 
 function slugify(value) {
-  return String(value).trim().toLowerCase()
+  const normalized = String(value).trim().toLowerCase()
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 220);
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return (normalized || 'event').slice(0, 220);
+}
+
+function candidateSlug(baseSlug, suffix = null) {
+  if (!suffix) return baseSlug;
+  const suffixText = `-${suffix}`;
+  return `${baseSlug.slice(0, 220 - suffixText.length).replace(/-+$/, '')}${suffixText}`;
+}
+
+async function findAvailableSlug(title) {
+  const baseSlug = slugify(title);
+
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const candidate = candidateSlug(baseSlug, suffix === 1 ? null : suffix);
+    const existing = await prisma.event.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!existing) return candidate;
+  }
+
+  return `${candidateSlug(baseSlug, Date.now()).slice(0, 220)}`;
 }
 
 function validateTimeline(event) {
   if (event.minTeamSize > event.maxTeamSize) {
-    throw httpError(422, 'Minimum team size cannot exceed maximum team size.');
+    throw httpError(422, 'Minimum team size cannot exceed maximum team size.', {
+      minTeamSize: 'Minimum team size cannot exceed maximum team size.',
+    });
   }
   if (event.registrationCapacity !== null && event.registrationCapacity !== undefined && event.registrationCapacity <= 0) {
-    throw httpError(422, 'Registration capacity must be a positive integer.');
+    throw httpError(422, 'Registration capacity must be a positive integer.', {
+      registrationCapacity: 'Registration capacity must be a positive integer.',
+    });
   }
 
   const dates = [
@@ -57,16 +86,24 @@ function validateTimeline(event) {
     throw httpError(422, 'A valid ISO 8601 date is required.');
   }
   if (event.startDate && event.endDate && event.endDate <= event.startDate) {
-    throw httpError(422, 'Event end date must be after event start date.');
+    throw httpError(422, 'Event end date must be after event start date.', {
+      endDate: 'Event end date must be after event start date.',
+    });
   }
   if (event.registrationStartDate && event.registrationEndDate && event.registrationEndDate <= event.registrationStartDate) {
-    throw httpError(422, 'Registration end date must be after registration start date.');
+    throw httpError(422, 'Registration end date must be after registration start date.', {
+      registrationEndDate: 'Registration end date must be after registration start date.',
+    });
   }
   if (event.registrationEndDate && event.startDate && event.registrationEndDate > event.startDate) {
-    throw httpError(422, 'Registration must end before or at the event start date.');
+    throw httpError(422, 'Registration must end before or at the event start date.', {
+      registrationEndDate: 'Registration must end before or at the event start date.',
+    });
   }
   if ((event.mode === 'OFFLINE' || event.mode === 'HYBRID') && !event.venue?.trim()) {
-    throw httpError(422, 'A venue is required for OFFLINE and HYBRID events.');
+    throw httpError(422, 'A venue is required for OFFLINE and HYBRID events.', {
+      venue: 'A venue is required for OFFLINE and HYBRID events.',
+    });
   }
   if (event.mode === 'ONLINE' && event.venue === undefined) {
     event.venue = null;
@@ -84,21 +121,25 @@ function validatePublishReady(event) {
 }
 
 async function createEvent(payload, adminUserId) {
-  let slug = payload.slug || slugify(payload.title);
-  if (!slug) throw httpError(422, 'A valid slug could not be generated.');
-
-  const data = { ...payload, slug, createdById: adminUserId, status: 'DRAFT' };
+  const data = { ...payload, createdById: adminUserId, status: 'DRAFT' };
   validateTimeline(data);
 
-  try {
-    const event = await prisma.event.create({ data, select: EVENT_SELECT });
-    return event;
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      throw httpError(409, 'An event with this slug already exists.');
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const slug = await findAvailableSlug(payload.title);
+    try {
+      return await prisma.event.create({
+        data: { ...data, slug },
+        select: EVENT_SELECT,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        continue;
+      }
+      throw error;
     }
-    throw error;
   }
+
+  throw httpError(409, 'Could not generate a unique event slug. Please try again.');
 }
 
 async function listEvents({ page, limit, search, status, mode, sortBy, sortOrder }) {

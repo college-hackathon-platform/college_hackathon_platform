@@ -53,6 +53,7 @@ export default function AdminEventsPage() {
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
   const [actionError, setActionError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [formEvent, setFormEvent] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -132,19 +133,25 @@ export default function AdminEventsPage() {
   async function submitForm(payload) {
     setSubmitting(true)
     setActionError('')
+    setFieldErrors({})
     try {
       if (formEvent) {
         await updateAdminEvent(formEvent.id, payload)
         setFeedback('Event updated successfully.')
       } else {
-        await createAdminEvent(payload)
-        setFeedback('Event draft created successfully.')
+        const response = await createAdminEvent(payload)
+        const createdEvent = response.data?.data?.event
+        setFeedback(createdEvent?.slug
+          ? `Event draft created successfully. URL Slug: ${createdEvent.slug}`
+          : 'Event draft created successfully.')
       }
       setFormOpen(false)
       setFormEvent(null)
       await Promise.all([loadEvents(1), loadStatistics()])
     } catch (requestError) {
-      setActionError(getApiErrorMessage(requestError, 'Unable to save the event.'))
+      const backendData = requestError.response?.data
+      setFieldErrors(backendData?.errors || {})
+      setActionError(getApiErrorMessage(requestError, backendData?.message || 'Unable to save the event.'))
     } finally {
       setSubmitting(false)
     }
@@ -329,7 +336,7 @@ export default function AdminEventsPage() {
         )}
       </section>
 
-      {formOpen && <EventFormModal event={formEvent} onClose={() => { setFormOpen(false); setFormEvent(null); setActionError('') }} onSubmit={(payload) => void submitForm(payload)} submitting={submitting} error={actionError} />}
+      {formOpen && <EventFormModal event={formEvent} onClose={() => { setFormOpen(false); setFormEvent(null); setActionError(''); setFieldErrors({}) }} onSubmit={(payload) => void submitForm(payload)} submitting={submitting} error={actionError} fieldErrors={fieldErrors} />}
 
       {detailsEvent && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDetailsEvent(null)}>

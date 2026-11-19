@@ -3,6 +3,8 @@ const { authenticate } = require('../../middleware/authenticate');
 const authorizeRoles = require('../../middleware/authorize');
 const adminController = require('./admin.controller');
 const adminEventController = require('./adminEvent.controller');
+const adminTeamRegistrationService = require('./adminTeamRegistration.service');
+const registrationController = require('../registration/registration.controller');
 
 const router = express.Router();
 
@@ -27,5 +29,46 @@ router.post('/events', adminEventController.createEvent);
 router.get('/events/:eventId', adminEventController.getEventById);
 router.patch('/events/:eventId/status', adminEventController.updateEventStatus);
 router.patch('/events/:eventId', adminEventController.updateEvent);
+router.get('/teams/statistics', async (req, res, next) => {
+  try {
+    const statistics = await adminTeamRegistrationService.teamStatistics();
+    return res.status(200).json({ success: true, message: 'Team statistics retrieved successfully.', data: { statistics } });
+  } catch (error) {
+    return next(error);
+  }
+});
+router.get('/teams', async (req, res, next) => {
+  try {
+    const page = Math.max(Number(req.query.page || 1), 1);
+    const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
+    const sortBy = ['name', 'createdAt', 'status'].includes(req.query.sortBy) ? req.query.sortBy : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+    const result = await adminTeamRegistrationService.listTeams({
+      page,
+      limit,
+      search: String(req.query.search || '').trim().slice(0, 100),
+      eventId: req.query.eventId || undefined,
+      status: req.query.status || undefined,
+      sortBy,
+      sortOrder,
+    });
+    return res.status(200).json({ success: true, message: 'Teams retrieved successfully.', data: result });
+  } catch (error) {
+    return next(error);
+  }
+});
+router.get('/teams/:teamId', async (req, res, next) => {
+  try {
+    const team = await adminTeamRegistrationService.getTeam(req.params.teamId);
+    if (!team) return res.status(404).json({ success: false, message: 'Team not found.' });
+    return res.status(200).json({ success: true, message: 'Team retrieved successfully.', data: { team } });
+  } catch (error) {
+    return next(error);
+  }
+});
+router.get('/registrations/statistics', registrationController.statistics);
+router.get('/registrations', registrationController.listAdmin);
+router.get('/registrations/:registrationId', registrationController.getAdmin);
+router.patch('/registrations/:registrationId/status', registrationController.updateStatus);
 
 module.exports = router;
