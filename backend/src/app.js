@@ -10,6 +10,9 @@ const studentRoutes = require('./modules/student/student.routes');
 const teamRoutes = require('./modules/team/team.routes');
 const registrationRoutes = require('./modules/registration/registration.routes');
 const errorHandler = require('./middleware/errorHandler');
+const evaluatorService = require('./modules/admin/evaluatorManagement.service');
+const maintenanceMode = require('./middleware/maintenanceMode');
+const platformSettingsController = require('./modules/admin/platformSettings.controller');
 
 const app = express();
 const allowedOrigin = String(process.env.CLIENT_URL || 'http://localhost:5173').trim().replace(/^['"]|['"]$/g, '').replace(/\/$/, '');
@@ -30,8 +33,25 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'Origin'],
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+
+app.use('/api/v1', maintenanceMode);
+
+app.get('/api/v1/platform/status', platformSettingsController.getPublicStatus);
+
+app.get('/api/v1/evaluator/invitations/:token', async (req, res, next) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token || token.length < 32) {
+      return res.status(404).json({ success: false, message: 'Invalid evaluator invitation.' });
+    }
+    const result = await evaluatorService.getInvitationByToken(token);
+    return res.status(200).json({ success: true, message: 'Evaluator invitation retrieved successfully.', data: result });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 app.get('/api/v1/health', async (req, res) => {
   try {
@@ -39,6 +59,9 @@ app.get('/api/v1/health', async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Backend is running successfully',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || require('../package.json').version,
       services: {
         api: 'operational',
         database: 'connected',

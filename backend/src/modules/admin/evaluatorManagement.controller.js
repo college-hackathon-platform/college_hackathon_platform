@@ -5,6 +5,7 @@ const {
   listEvaluatorSchema,
 } = require('./evaluatorManagement.validation');
 const evaluatorService = require('./evaluatorManagement.service');
+const { verifyMailConfiguration } = require('../../services/mailService');
 
 function zodError(res, error, fallback) {
   return res.status(422).json({
@@ -60,4 +61,32 @@ async function regenerate(req, res, next) {
   }
 }
 
-module.exports = { list, invite, revoke, regenerate };
+async function resend(req, res, next) {
+  try {
+    const invitationId = invitationIdSchema.parse(req.params.invitationId);
+    const result = await evaluatorService.resendInvitation(invitationId);
+    return res.status(200).json({ success: true, message: result.emailDelivered ? 'Evaluator invitation email sent successfully.' : 'Invitation exists, but email delivery failed.', data: result });
+  } catch (error) {
+    if (error?.name === 'ZodError') return zodError(res, error, 'Invalid invitation ID.');
+    return next(error);
+  }
+}
+
+async function verifyMail(req, res, next) {
+  try {
+    const result = await verifyMailConfiguration();
+    return res.status(result.configured ? 200 : 503).json({
+      success: result.verified,
+      message: result.message,
+      data: { configured: result.configured, verified: result.verified },
+    });
+  } catch {
+    return res.status(502).json({
+      success: false,
+      message: 'SMTP verification failed.',
+      data: { configured: true, verified: false },
+    });
+  }
+}
+
+module.exports = { list, invite, revoke, regenerate, resend, verifyMail };

@@ -121,6 +121,13 @@ function validatePublishReady(event) {
 }
 
 async function createEvent(payload, adminUserId) {
+  const settings = await prisma.platformSettings.findUnique({
+    where: { id: 'default' },
+    select: { allowEventCreation: true },
+  });
+  if (settings && !settings.allowEventCreation) {
+    throw httpError(409, 'Global event creation is currently disabled.');
+  }
   const data = { ...payload, createdById: adminUserId, status: 'DRAFT' };
   validateTimeline(data);
 

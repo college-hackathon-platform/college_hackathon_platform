@@ -18,6 +18,13 @@ const REGISTRATION_SELECT = {
 
 async function submitRegistration(userId, teamId) {
   return prisma.$transaction(async (tx) => {
+    const settings = await tx.platformSettings.findUnique({
+      where: { id: 'default' },
+      select: { registrationEnabled: true },
+    });
+    if (settings && !settings.registrationEnabled) {
+      throw httpError(409, 'New event registrations are currently disabled.');
+    }
     const team = await tx.team.findUnique({
       where: { id: teamId },
       include: { event: true, members: true },

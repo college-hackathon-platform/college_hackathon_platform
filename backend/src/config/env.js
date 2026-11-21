@@ -42,7 +42,34 @@ function validateAuthConfig() {
   };
 }
 
+function getMailConfig() {
+  const host = String(process.env.SMTP_HOST || '').trim();
+  const port = getNumberEnv('SMTP_PORT', 587);
+  const secure = process.env.SMTP_SECURE === 'true';
+  const user = String(process.env.SMTP_USER || '').trim();
+  const pass = String(process.env.SMTP_PASS || '').trim();
+  const fromName = String(process.env.MAIL_FROM_NAME || 'College Hackathon Platform').trim();
+  const fromEmail = String(process.env.MAIL_FROM_EMAIL || '').trim();
+  const frontendUrl = String(process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\/$/, '');
+
+  return {
+    configured: Boolean(host && port && user && pass && fromEmail),
+    host,
+    port,
+    secure,
+    user,
+    pass,
+    fromName,
+    fromEmail,
+    frontendUrl,
+  };
+}
+
 module.exports = {
   validateAuthConfig,
   getNumberEnv,
+  getMailConfig,
 };

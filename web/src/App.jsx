@@ -17,6 +17,8 @@ import AdminRegistrationsPage from './pages/admin/AdminRegistrationsPage'
 import StudentWorkspace from './pages/student/StudentWorkspace'
 import AdminFacultyPage from './pages/admin/AdminFacultyPage'
 import AdminEvaluatorsPage from './pages/admin/AdminEvaluatorsPage'
+import EvaluatorInvitationPage from './pages/EvaluatorInvitationPage'
+import AdminSettingsPage from './pages/admin/AdminSettingsPage'
 import './auth.css'
 
 const rolePaths = {
@@ -49,6 +51,7 @@ function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/status" element={<StatusPage />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
+      <Route path="/evaluator/invitations/:token" element={<EvaluatorInvitationPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<RoleRoute allowedRoles={['ADMIN']} />}>
@@ -60,7 +63,7 @@ function App() {
             <Route path="faculty" element={<AdminFacultyPage />} />
             <Route path="evaluators" element={<AdminEvaluatorsPage />} />
             <Route path="analytics" element={<PlaceholderPage title="Reports & Analytics" description="Review platform reports and analytics." moduleName="Reports and analytics" />} />
-            <Route path="settings" element={<PlaceholderPage title="Platform Settings" description="Configure platform-wide preferences." moduleName="Platform settings" />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="*" element={<PlaceholderPage title="Page not found" description="The requested Admin page could not be found." moduleName="This page" />} />
           </Route>
         </Route>

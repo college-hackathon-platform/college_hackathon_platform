@@ -31,3 +31,11 @@ export function revokeEvaluatorInvitation(invitationId) {
 export function regenerateEvaluatorInvitation(invitationId) {
   return api.post(`/admin/evaluators/${invitationId}/regenerate`)
 }
+
+export function resendEvaluatorInvitation(invitationId) {
+  return api.post(`/admin/evaluators/${invitationId}/resend`)
+}
+
+export function getEvaluatorInvitation(token) {
+  return api.get(`/evaluator/invitations/${encodeURIComponent(token)}`, { skipAuth: true, skipAuthRefresh: true })
+}
