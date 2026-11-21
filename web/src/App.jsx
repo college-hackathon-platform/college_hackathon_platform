@@ -15,6 +15,8 @@ import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminEventsPage from './pages/admin/AdminEventsPage'
 import AdminRegistrationsPage from './pages/admin/AdminRegistrationsPage'
 import StudentWorkspace from './pages/student/StudentWorkspace'
+import AdminFacultyPage from './pages/admin/AdminFacultyPage'
+import AdminEvaluatorsPage from './pages/admin/AdminEvaluatorsPage'
 import './auth.css'
 
 const rolePaths = {
@@ -55,8 +57,8 @@ function App() {
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="events" element={<AdminEventsPage />} />
             <Route path="registrations" element={<AdminRegistrationsPage />} />
-            <Route path="faculty" element={<PlaceholderPage title="Faculty Management" description="Manage faculty accounts and assignments." moduleName="Faculty management" />} />
-            <Route path="evaluators" element={<PlaceholderPage title="Evaluators" description="Manage event-specific evaluator assignments." moduleName="Evaluator management" />} />
+            <Route path="faculty" element={<AdminFacultyPage />} />
+            <Route path="evaluators" element={<AdminEvaluatorsPage />} />
             <Route path="analytics" element={<PlaceholderPage title="Reports & Analytics" description="Review platform reports and analytics." moduleName="Reports and analytics" />} />
             <Route path="settings" element={<PlaceholderPage title="Platform Settings" description="Configure platform-wide preferences." moduleName="Platform settings" />} />
             <Route path="*" element={<PlaceholderPage title="Page not found" description="The requested Admin page could not be found." moduleName="This page" />} />

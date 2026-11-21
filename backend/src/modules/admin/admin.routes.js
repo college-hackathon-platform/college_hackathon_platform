@@ -5,6 +5,8 @@ const adminController = require('./admin.controller');
 const adminEventController = require('./adminEvent.controller');
 const adminTeamRegistrationService = require('./adminTeamRegistration.service');
 const registrationController = require('../registration/registration.controller');
+const facultyController = require('./facultyManagement.controller');
+const evaluatorController = require('./evaluatorManagement.controller');
 
 const router = express.Router();
 
@@ -29,6 +31,15 @@ router.post('/events', adminEventController.createEvent);
 router.get('/events/:eventId', adminEventController.getEventById);
 router.patch('/events/:eventId/status', adminEventController.updateEventStatus);
 router.patch('/events/:eventId', adminEventController.updateEvent);
+router.get('/faculty', facultyController.list);
+router.get('/faculty/:facultyId/assignments', facultyController.get);
+router.get('/faculty/:facultyId', facultyController.get);
+router.post('/events/:eventId/faculty', facultyController.assign);
+router.delete('/events/:eventId/faculty/:facultyId', facultyController.remove);
+router.get('/events/:eventId/evaluators', evaluatorController.list);
+router.post('/events/:eventId/evaluators', evaluatorController.invite);
+router.patch('/evaluators/:invitationId/revoke', evaluatorController.revoke);
+router.post('/evaluators/:invitationId/regenerate', evaluatorController.regenerate);
 router.get('/teams/statistics', async (req, res, next) => {
   try {
     const statistics = await adminTeamRegistrationService.teamStatistics();
