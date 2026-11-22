@@ -19,6 +19,7 @@ import AdminFacultyPage from './pages/admin/AdminFacultyPage'
 import AdminEvaluatorsPage from './pages/admin/AdminEvaluatorsPage'
 import EvaluatorInvitationPage from './pages/EvaluatorInvitationPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
+import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import './auth.css'
 
 const rolePaths = {
@@ -62,7 +63,7 @@ function App() {
             <Route path="registrations" element={<AdminRegistrationsPage />} />
             <Route path="faculty" element={<AdminFacultyPage />} />
             <Route path="evaluators" element={<AdminEvaluatorsPage />} />
-            <Route path="analytics" element={<PlaceholderPage title="Reports & Analytics" description="Review platform reports and analytics." moduleName="Reports and analytics" />} />
+            <Route path="analytics" element={<AdminAnalyticsPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="*" element={<PlaceholderPage title="Page not found" description="The requested Admin page could not be found." moduleName="This page" />} />
           </Route>
