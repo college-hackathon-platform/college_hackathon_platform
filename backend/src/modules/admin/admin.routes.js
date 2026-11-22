@@ -8,6 +8,7 @@ const registrationController = require('../registration/registration.controller'
 const facultyController = require('./facultyManagement.controller');
 const evaluatorController = require('./evaluatorManagement.controller');
 const platformSettingsController = require('./platformSettings.controller');
+const analyticsController = require('./analytics/analytics.controller');
 const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
@@ -37,6 +38,10 @@ router.patch('/users/:userId/status', adminController.updateUserStatus);
 router.patch('/users/:userId', adminController.updateUser);
 router.get('/settings', platformSettingsController.getSettings);
 router.patch('/settings', platformSettingsController.updateSettings);
+router.get('/analytics/metadata', analyticsController.getMetadata);
+router.get('/analytics/overview', analyticsController.getOverview);
+router.get('/analytics/users', analyticsController.getUsers);
+router.get('/analytics/events', analyticsController.getEvents);
 router.get('/events/statistics', adminEventController.getStatistics);
 router.get('/events', adminEventController.listEvents);
 router.post('/events', adminEventController.createEvent);
