@@ -1,23 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AnalyticsChartContainer from '../../components/admin/AnalyticsChartContainer'
 import AnalyticsFilterBar from '../../components/admin/AnalyticsFilterBar'
 import {
   DonutDistribution,
+  EventCreationChart,
+  EventWiseTable,
   PlatformGrowthChart,
+  PopularEventsTable,
+  PopularTeamsTable,
+  RegistrationTrendChart,
   StatusDistribution,
+  TeamFormationChart,
+  TeamSizeBarChart,
   UserGrowthChart,
 } from '../../components/admin/AnalyticsCharts'
 import PageHeader from '../../components/admin/PageHeader'
 import SectionCard from '../../components/admin/SectionCard'
 import StatCard from '../../components/admin/StatCard'
+import ReportsExportSection from '../../components/admin/ReportsExportSection'
 import { getAdminEvents } from '../../services/adminEventsService'
-import { getAnalyticsMetadata, getAnalyticsOverview, getUserAnalytics } from '../../services/analyticsService'
+import { getAnalyticsMetadata, getAnalyticsOverview, getEventAnalytics, getTeamRegistrationAnalytics, getUserAnalytics } from '../../services/analyticsService'
 import { getApiErrorMessage } from '../../services/api'
+
+function formatAnalyticsDate(value) {
+  if (!value) return 'Not set'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Not set'
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 export default function AdminAnalyticsPage() {
   const [metadata, setMetadata] = useState(null)
   const [overview, setOverview] = useState(null)
   const [userAnalytics, setUserAnalytics] = useState(null)
+  const [eventAnalytics, setEventAnalytics] = useState(null)
+  const [teamRegAnalytics, setTeamRegAnalytics] = useState(null)
   const [events, setEvents] = useState([])
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -25,8 +42,10 @@ export default function AdminAnalyticsPage() {
   const [interval, setInterval] = useState('MONTH')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const loadRequestRef = useRef(0)
 
   const loadAnalytics = useCallback(async () => {
+    const requestId = ++loadRequestRef.current
     setLoading(true)
     setError('')
 
@@ -36,12 +55,16 @@ export default function AdminAnalyticsPage() {
       ...(eventId ? { eventId } : {}),
       interval,
     }
-    const [metadataResult, overviewResult, userResult, eventsResult] = await Promise.allSettled([
+    const [metadataResult, overviewResult, userResult, eventResult, teamRegResult, eventsResult] = await Promise.allSettled([
       getAnalyticsMetadata(params),
       getAnalyticsOverview(params),
       getUserAnalytics(params),
+      getEventAnalytics(params),
+      getTeamRegistrationAnalytics(params),
       getAdminEvents({ page: 1, limit: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
     ])
+
+    if (requestId !== loadRequestRef.current) return
 
     const failures = []
     if (metadataResult.status === 'fulfilled') {
@@ -61,6 +84,18 @@ export default function AdminAnalyticsPage() {
     } else {
       setUserAnalytics(null)
       failures.push(getApiErrorMessage(userResult.reason, 'Unable to load user analytics.'))
+    }
+    if (eventResult.status === 'fulfilled') {
+      setEventAnalytics(eventResult.value.data?.data || null)
+    } else {
+      setEventAnalytics(null)
+      failures.push(getApiErrorMessage(eventResult.reason, 'Unable to load event analytics.'))
+    }
+    if (teamRegResult.status === 'fulfilled') {
+      setTeamRegAnalytics(teamRegResult.value.data?.data || null)
+    } else {
+      setTeamRegAnalytics(null)
+      failures.push(getApiErrorMessage(teamRegResult.reason, 'Unable to load team and registration analytics.'))
     }
     if (eventsResult.status === 'fulfilled') {
       setEvents(eventsResult.value.data?.data?.events || [])
@@ -99,6 +134,22 @@ export default function AdminAnalyticsPage() {
     { label: 'Pending', value: kpis.pendingRegistrations.value, icon: 'clock', scope: kpis.pendingRegistrations.scope, comparison: kpis.pendingRegistrations.changePercentage },
   ] : []
 
+  const eventSummary = eventAnalytics?.summary
+  const eventKpiCards = eventSummary ? [
+    { label: 'Total Events', value: eventSummary.totalEvents, icon: 'calendar', scope: eventSummary.scope },
+    { label: 'Draft Events', value: eventSummary.draftEvents, icon: 'clipboard', scope: eventSummary.scope },
+    { label: 'Published Events', value: eventSummary.publishedEvents, icon: 'award', scope: eventSummary.scope },
+    { label: 'Active Events', value: eventSummary.activeEvents, icon: 'clock', scope: eventSummary.scope },
+    { label: 'Completed Events', value: eventSummary.completedEvents, icon: 'award', scope: eventSummary.scope },
+    { label: 'Cancelled Events', value: eventSummary.cancelledEvents, icon: 'calendar', scope: eventSummary.scope },
+    { label: 'Total Registrations', value: eventSummary.totalRegistrations, icon: 'clipboard', scope: eventSummary.scope },
+    { label: 'Confirmed Registrations', value: eventSummary.confirmedRegistrations, icon: 'award', scope: eventSummary.scope },
+    { label: 'Pending Registrations', value: eventSummary.pendingRegistrations, icon: 'clock', scope: eventSummary.scope },
+    { label: 'Participating Teams', value: eventSummary.participatingTeams, icon: 'clipboard', scope: eventSummary.scope },
+    { label: 'Participating Students', value: eventSummary.participatingStudents, icon: 'users', scope: eventSummary.scope },
+    { label: 'Avg. Registrations / Event', value: eventSummary.averageRegistrationsPerEvent, icon: 'chart', scope: eventSummary.scope },
+  ] : []
+
   function comparisonLabel(card) {
     if (typeof card.comparison !== 'number') return card.scope === 'EVENT' ? 'Event scope' : 'Platform scope'
     const sign = card.comparison > 0 ? '+' : ''
@@ -134,7 +185,7 @@ export default function AdminAnalyticsPage() {
 
       {loading ? (
         <div className="analytics-loading analytics-loading-ten" aria-label="Loading analytics overview" aria-live="polite">
-          {Array.from({ length: 10 }, (_, index) => (
+          {Array.from({ length: 12 }, (_, index) => (
             <div key={index} className="analytics-skeleton" />
           ))}
         </div>
@@ -156,8 +207,11 @@ export default function AdminAnalyticsPage() {
             <a className="is-active" href="#growth"><strong>Growth</strong><span>Platform activity</span></a>
             <a href="#users"><strong>Users</strong><span>Role distribution</span></a>
             <a href="#user-analytics"><strong>User Analytics</strong><span>Acquisition and participation</span></a>
+            <a href="#event-analytics"><strong>Event Analytics</strong><span>Lifecycle and performance</span></a>
+            <a href="#team-analytics"><strong>Team &amp; Registrations</strong><span>Formation and conversion</span></a>
             <a href="#events"><strong>Events</strong><span>Lifecycle status</span></a>
-            <a href="#registrations"><strong>Teams & registrations</strong><span>Status and team size</span></a>
+            <a href="#registrations"><strong>Teams &amp; registrations</strong><span>Status and team size</span></a>
+            <a href="#reports"><strong>Reports &amp; Export</strong><span>Official exports</span></a>
           </div>
 
           <div id="growth" className="analytics-wide-card">
@@ -281,6 +335,286 @@ export default function AdminAnalyticsPage() {
             </div>
           )}
 
+          {eventAnalytics && (
+            <div id="event-analytics" className="analytics-event-section">
+              <SectionCard
+                title="Event Analytics"
+                description={eventSummary?.scope === 'EVENT'
+                  ? 'Selected-event registration and participation data with event-specific lifecycle totals'
+                  : 'Platform-wide event lifecycle, creation, registration, and participation analytics'}
+              >
+                <div className="analytics-event-kpi-grid">
+                  {eventKpiCards.map((card) => (
+                    <StatCard
+                      key={card.label}
+                      label={card.label}
+                      value={card.value}
+                      description={card.scope === 'EVENT' ? 'Selected event scope' : 'Platform scope'}
+                      icon={card.icon}
+                    />
+                  ))}
+                </div>
+                {eventAnalytics.comparisons && (
+                  <div className="analytics-acquisition-grid analytics-event-comparisons">
+                    {[
+                      ['Events created', eventAnalytics.comparisons.eventsCreated],
+                      ['Registrations received', eventAnalytics.comparisons.registrationsReceived],
+                      ['Confirmed registrations', eventAnalytics.comparisons.confirmedRegistrations],
+                      ['Participating teams', eventAnalytics.comparisons.participatingTeams],
+                      ['Participating students', eventAnalytics.comparisons.participatingStudents],
+                    ].map(([label, item]) => (
+                      <div key={label} className="analytics-acquisition-card">
+                        <span>{label}</span>
+                        <strong>{item.previousValue === null || item.previousValue === undefined ? 'N/A' : item.previousValue}</strong>
+                        <small>
+                          {typeof item.changePercentage === 'number'
+                            ? `${item.changePercentage > 0 ? '+' : ''}${item.changePercentage}% vs previous period`
+                            : 'Unavailable: complete date range required'}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+
+              <div className="analytics-distribution-grid">
+                <SectionCard title="Event Lifecycle" description="Actual EventStatus values; lifecycle is not inferred from event dates">
+                  <AnalyticsChartContainer title="Event status distribution">
+                    <StatusDistribution
+                      title="Events"
+                      data={eventAnalytics.lifecycle}
+                      description="No events match the selected reporting scope."
+                    />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+                <SectionCard title="Registration Status" description="Current status distribution; historical status transitions are not reconstructed">
+                  <AnalyticsChartContainer title="Registration status distribution">
+                    <StatusDistribution
+                      title="Registrations"
+                      data={eventAnalytics.registrationStatus}
+                      description="No registrations match the selected reporting scope."
+                    />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Event Creation Trend" description={`UTC ${interval.toLowerCase()} aggregation of actual Event.createdAt values`}>
+                  <AnalyticsChartContainer title="Events created" description="Event creation time, not event start time">
+                    <EventCreationChart data={eventAnalytics.eventGrowth || []} />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Registration Activity" description={`UTC ${interval.toLowerCase()} registration creation trend from actual EventRegistration.createdAt values`}>
+                  <AnalyticsChartContainer title="Registration activity" description="Current-status series are grouped from registration creation records">
+                    <RegistrationTrendChart data={eventAnalytics.registrationTrends || []} />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-event-two-grid">
+                <SectionCard title="Popular Events" description="Ranked by confirmed registrations, then participating students, teams, and title">
+                  <PopularEventsTable data={eventAnalytics.popularity || []} />
+                </SectionCard>
+                <SectionCard title="Participation & Conversion" description={eventAnalytics.participation.definition}>
+                  <div className="analytics-event-participation">
+                    <div className="analytics-team-kpis">
+                      <div><span>Participating teams</span><strong>{eventAnalytics.participation.participatingTeams}</strong></div>
+                      <div><span>Participating students</span><strong>{eventAnalytics.participation.participatingStudents}</strong></div>
+                      <div><span>Confirmed registrations</span><strong>{eventAnalytics.participation.confirmedRegistrations}</strong></div>
+                      <div><span>Avg. students / team</span><strong>{eventAnalytics.participation.averageStudentsPerParticipatingTeam}</strong></div>
+                      <div><span>Total registrations</span><strong>{eventAnalytics.conversion.totalRegistrations}</strong></div>
+                      <div><span>Current confirmation rate</span><strong>{eventAnalytics.conversion.currentConfirmationRate}%</strong></div>
+                    </div>
+                    <p className="analytics-reporting-note">{eventAnalytics.conversion.definition}</p>
+                  </div>
+                </SectionCard>
+              </div>
+
+              {eventAnalytics.eventDetails && (
+                <SectionCard title="Individual Event Performance" description="Selected event details, registration status, participation, assignments, and registration activity">
+                  <div className="analytics-event-detail">
+                    <div className="analytics-event-detail-info">
+                      <div><span>Event</span><strong>{eventAnalytics.eventDetails.event.title}</strong></div>
+                      <div><span>Status</span><strong>{eventAnalytics.eventDetails.event.status.replaceAll('_', ' ')}</strong></div>
+                      <div><span>Mode</span><strong>{eventAnalytics.eventDetails.event.mode}</strong></div>
+                      <div><span>Created</span><strong>{formatAnalyticsDate(eventAnalytics.eventDetails.event.createdAt)}</strong></div>
+                      <div><span>Event dates</span><strong>{formatAnalyticsDate(eventAnalytics.eventDetails.event.startDate)} – {formatAnalyticsDate(eventAnalytics.eventDetails.event.endDate)}</strong></div>
+                      <div><span>Registration dates</span><strong>{formatAnalyticsDate(eventAnalytics.eventDetails.event.registrationStartDate)} – {formatAnalyticsDate(eventAnalytics.eventDetails.event.registrationEndDate)}</strong></div>
+                      <div><span>Registration capacity</span><strong>{eventAnalytics.eventDetails.event.registrationCapacity ?? 'Not set'}</strong></div>
+                    </div>
+
+                    <div className="analytics-team-kpis">
+                      {[
+                        ['Total registrations', eventAnalytics.eventDetails.registrationSummary.total],
+                        ['Confirmed', eventAnalytics.eventDetails.registrationSummary.confirmed],
+                        ['Pending', eventAnalytics.eventDetails.registrationSummary.pending],
+                        ['Rejected', eventAnalytics.eventDetails.registrationSummary.rejected],
+                        ['Cancelled', eventAnalytics.eventDetails.registrationSummary.cancelled],
+                        ['Participating teams', eventAnalytics.eventDetails.participationSummary.participatingTeams],
+                        ['Participating students', eventAnalytics.eventDetails.participationSummary.participatingStudents],
+                        ['Avg. students / team', eventAnalytics.eventDetails.participationSummary.averageStudentsPerParticipatingTeam],
+                        ['Faculty assignments', eventAnalytics.eventDetails.facultyAssignments],
+                        ['Evaluator invitations', eventAnalytics.eventDetails.evaluatorInvitations.total],
+                      ].map(([label, value]) => (
+                        <div key={label}><span>{label}</span><strong>{value}</strong></div>
+                      ))}
+                    </div>
+
+                    <div className="analytics-event-detail-charts">
+                      <AnalyticsChartContainer title="Selected event registration trend" description="Actual registration creation by selected interval">
+                        <RegistrationTrendChart data={eventAnalytics.eventDetails.registrationActivity.trend || []} />
+                      </AnalyticsChartContainer>
+                      <AnalyticsChartContainer title="Selected event registration status" description="Current status counts and percentages">
+                        <StatusDistribution
+                          title="Registrations"
+                          data={eventAnalytics.eventDetails.registrationActivity.statusDistribution}
+                          description="No registrations match this event and date scope."
+                        />
+                      </AnalyticsChartContainer>
+                    </div>
+
+                    <p className="analytics-reporting-note">
+                      Evaluator invitations: {eventAnalytics.eventDetails.evaluatorInvitations.pending} pending,
+                      {' '}{eventAnalytics.eventDetails.evaluatorInvitations.revoked} revoked,
+                      {' '}{eventAnalytics.eventDetails.evaluatorInvitations.expired} expired,
+                      {' '}{eventAnalytics.eventDetails.evaluatorInvitations.emailSent} email-sent.
+                      Private tokens are not returned.
+                    </p>
+                  </div>
+                </SectionCard>
+              )}
+            </div>
+          )}
+
+          {teamRegAnalytics && (
+            <div id="team-analytics" className="analytics-event-section">
+              <SectionCard
+                title="Team &amp; Registration Analytics"
+                description={teamRegAnalytics.teamSummary?.scope === 'EVENT'
+                  ? 'Selected-event team formation, registration status, participation, and conversion'
+                  : 'Platform-wide team formation, registration status, participation, and conversion analytics'}
+              >
+                <div className="analytics-tr-kpi-grid">
+                  {[
+                    ['Total Teams', teamRegAnalytics.teamSummary.totalTeams, 'clipboard'],
+                    ['Active Teams', teamRegAnalytics.teamSummary.activeTeams, 'award'],
+                    ['Teams w/ Registration', teamRegAnalytics.teamSummary.teamsWithRegistration, 'clipboard'],
+                    ['Teams w/o Registration', teamRegAnalytics.teamSummary.teamsWithoutRegistration, 'clock'],
+                    ['Active Members', teamRegAnalytics.teamSummary.activeMemberCount, 'users'],
+                    ['Avg. Members / Team', teamRegAnalytics.teamSummary.averageMembersPerTeam, 'chart'],
+                    ['Total Registrations', teamRegAnalytics.registrationSummary.totalRegistrations, 'clipboard'],
+                    ['Confirmed', teamRegAnalytics.registrationSummary.confirmedRegistrations, 'award'],
+                    ['Pending', teamRegAnalytics.registrationSummary.pendingRegistrations, 'clock'],
+                    ['Rejected', teamRegAnalytics.registrationSummary.rejectedRegistrations, 'calendar'],
+                    ['Cancelled', teamRegAnalytics.registrationSummary.cancelledRegistrations, 'calendar'],
+                    ['Confirmation Rate', `${teamRegAnalytics.conversion.currentConfirmationRate}%`, 'chart'],
+                  ].map(([label, value, icon]) => (
+                    <StatCard
+                      key={label}
+                      label={label}
+                      value={value}
+                      description={teamRegAnalytics.teamSummary.scope === 'EVENT' ? 'Selected event scope' : 'Platform scope'}
+                      icon={icon}
+                    />
+                  ))}
+                </div>
+
+                <div className="analytics-acquisition-grid analytics-tr-comparisons">
+                  {[
+                    ['Total teams', teamRegAnalytics.comparisons.totalTeams],
+                    ['Total registrations', teamRegAnalytics.comparisons.totalRegistrations],
+                    ['Confirmed registrations', teamRegAnalytics.comparisons.confirmedRegistrations],
+                    ['Confirmed teams', teamRegAnalytics.comparisons.confirmedTeams],
+                    ['Participating students', teamRegAnalytics.comparisons.participatingStudents],
+                  ].map(([label, item]) => (
+                    <div key={label} className="analytics-acquisition-card">
+                      <span>{label}</span>
+                      <strong>{item.previousValue === null || item.previousValue === undefined ? 'N/A' : item.previousValue}</strong>
+                      <small>
+                        {typeof item.changePercentage === 'number'
+                          ? `${item.changePercentage > 0 ? '+' : ''}${item.changePercentage}% vs previous period`
+                          : 'Unavailable: complete date range required'}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+
+              <div className="analytics-distribution-grid">
+                <SectionCard title="Team Status Distribution" description="Actual TeamStatus values: ACTIVE, ARCHIVED, DISBANDED">
+                  <AnalyticsChartContainer title="Team status distribution">
+                    <StatusDistribution
+                      title="Teams"
+                      data={teamRegAnalytics.teamStatusDistribution}
+                      description="No teams match the selected reporting scope."
+                    />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+                <SectionCard title="Registration Status Distribution" description="Current status distribution; historical transitions are not reconstructed">
+                  <AnalyticsChartContainer title="Registration status distribution">
+                    <StatusDistribution
+                      title="Registrations"
+                      data={teamRegAnalytics.registrationStatusDistribution}
+                      description="No registrations match the selected reporting scope."
+                    />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Team Formation Trend" description={`UTC ${interval.toLowerCase()} aggregation of actual Team.createdAt values`}>
+                  <AnalyticsChartContainer title="Team formation" description="Team creation time by status at time of query">
+                    <TeamFormationChart data={teamRegAnalytics.teamGrowth || []} />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Registration Activity Trend" description={`UTC ${interval.toLowerCase()} registration creation trend from actual EventRegistration.createdAt values`}>
+                  <AnalyticsChartContainer title="Registration activity" description="Current-status series grouped from registration creation records">
+                    <RegistrationTrendChart data={teamRegAnalytics.registrationTrend || []} />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-event-two-grid">
+                <SectionCard title="Team Size Distribution" description="Count of ACTIVE TeamMember records per team, bucketed by size">
+                  <AnalyticsChartContainer title="Team size distribution" description="Teams grouped by active member count">
+                    <TeamSizeBarChart data={teamRegAnalytics.teamSizeDistribution || []} />
+                  </AnalyticsChartContainer>
+                </SectionCard>
+                <SectionCard title="Participation &amp; Conversion" description={teamRegAnalytics.participation.definition}>
+                  <div className="analytics-event-participation">
+                    <div className="analytics-team-kpis">
+                      <div><span>Confirmed teams</span><strong>{teamRegAnalytics.participation.confirmedTeams}</strong></div>
+                      <div><span>Participating students</span><strong>{teamRegAnalytics.participation.participatingStudents}</strong></div>
+                      <div><span>Avg. members / confirmed team</span><strong>{teamRegAnalytics.participation.averageMembersPerConfirmedTeam}</strong></div>
+                      <div><span>Total registrations</span><strong>{teamRegAnalytics.conversion.totalRegistrations}</strong></div>
+                      <div><span>Confirmed registrations</span><strong>{teamRegAnalytics.conversion.confirmedRegistrations}</strong></div>
+                      <div><span>Confirmation rate</span><strong>{teamRegAnalytics.conversion.currentConfirmationRate}%</strong></div>
+                    </div>
+                    <p className="analytics-reporting-note">{teamRegAnalytics.conversion.definition}</p>
+                  </div>
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Event-wise Breakdown" description="Teams, registrations, confirmed registrations, participating students, and confirmation rate per event">
+                  <EventWiseTable data={teamRegAnalytics.eventWise || []} />
+                </SectionCard>
+              </div>
+
+              <div className="analytics-wide-card">
+                <SectionCard title="Popular Teams" description="Ranked by confirmed registrations, then active member count, then team name">
+                  <PopularTeamsTable data={teamRegAnalytics.popularTeams || []} />
+                </SectionCard>
+              </div>
+            </div>
+          )}
+
           <div id="registrations" className="analytics-team-grid">
             <SectionCard title="Registration Status Distribution" description="Actual EventRegistration status values">
               <AnalyticsChartContainer title="Registration status distribution">
@@ -313,6 +647,8 @@ export default function AdminAnalyticsPage() {
               </div>
             </SectionCard>
           </div>
+
+          <ReportsExportSection appliedFilters={{ startDate, endDate, eventId, interval }} events={events} />
 
           {metadata && (
             <p className="analytics-reporting-note">

@@ -15,3 +15,18 @@ export function getUserAnalytics(params = {}) {
 export function getEventAnalytics(params = {}) {
   return api.get('/admin/analytics/events', { params })
 }
+
+export function getTeamRegistrationAnalytics(params = {}) {
+  return api.get('/admin/analytics/teams-registrations', { params })
+}
+
+export function getReportPreview(params = {}) {
+  return api.get('/admin/analytics/reports/preview', { params })
+}
+
+export function exportReport(params = {}) {
+  return api.get('/admin/analytics/reports/export', {
+    params,
+    responseType: 'blob',
+  })
+}
