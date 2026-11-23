@@ -92,10 +92,24 @@ async function getGrowthSeries(interval, start, endExclusive, eventId) {
   const trunc = interval === 'DAY' ? 'day' : interval === 'WEEK' ? 'week' : 'month';
   const truncExpression = Prisma.raw(`'${trunc}'`);
 
-  function dateClauses() {
-    const clauses = [Prisma.sql`AND "createdAt" IS NOT NULL`];
-    if (start) clauses.push(Prisma.sql`AND "createdAt" >= ${start}`);
-    if (endExclusive) clauses.push(Prisma.sql`AND "createdAt" < ${endExclusive}`);
+  function buildWhereClauses() {
+    const clauses = [Prisma.sql`1 = 1`];
+    if (eventId) clauses.push(Prisma.sql`"id" = ${eventId}::uuid`);
+    clauses.push(Prisma.sql`"createdAt" IS NOT NULL`);
+    if (start) clauses.push(Prisma.sql`"createdAt" >= ${start}`);
+    if (endExclusive) clauses.push(Prisma.sql`"createdAt" < ${endExclusive}`);
+    return clauses;
+  }
+
+  function buildWhereClausesForTable(tableName) {
+    const clauses = [Prisma.sql`1 = 1`];
+    if (eventId && tableName !== 'User') {
+      const col = tableName === 'Event' ? 'id' : 'eventId';
+      clauses.push(Prisma.sql`${Prisma.raw(`"${col}"`)} = ${eventId}::uuid`);
+    }
+    clauses.push(Prisma.sql`"createdAt" IS NOT NULL`);
+    if (start) clauses.push(Prisma.sql`"createdAt" >= ${start}`);
+    if (endExclusive) clauses.push(Prisma.sql`"createdAt" < ${endExclusive}`);
     return clauses;
   }
 
@@ -103,34 +117,28 @@ async function getGrowthSeries(interval, start, endExclusive, eventId) {
     prisma.$queryRaw`
       SELECT date_trunc(${truncExpression}, "createdAt") AS period, COUNT(*)::int AS value
       FROM "User"
-      WHERE 1 = 1 ${Prisma.join(dateClauses(), '')}
+      WHERE ${Prisma.join(buildWhereClausesForTable('User'), ' AND ')}
       GROUP BY 1
       ORDER BY 1
     `,
     prisma.$queryRaw`
       SELECT date_trunc(${truncExpression}, "createdAt") AS period, COUNT(*)::int AS value
       FROM "Event"
-      WHERE 1 = 1
-      ${eventId ? Prisma.sql`AND "id" = ${eventId}::uuid` : Prisma.empty}
-      ${Prisma.join(dateClauses(), '')}
+      WHERE ${Prisma.join(buildWhereClausesForTable('Event'), ' AND ')}
       GROUP BY 1
       ORDER BY 1
     `,
     prisma.$queryRaw`
       SELECT date_trunc(${truncExpression}, "createdAt") AS period, COUNT(*)::int AS value
       FROM "Team"
-      WHERE 1 = 1
-      ${eventId ? Prisma.sql`AND "eventId" = ${eventId}::uuid` : Prisma.empty}
-      ${Prisma.join(dateClauses(), '')}
+      WHERE ${Prisma.join(buildWhereClausesForTable('Team'), ' AND ')}
       GROUP BY 1
       ORDER BY 1
     `,
     prisma.$queryRaw`
       SELECT date_trunc(${truncExpression}, "createdAt") AS period, COUNT(*)::int AS value
       FROM "EventRegistration"
-      WHERE 1 = 1
-      ${eventId ? Prisma.sql`AND "eventId" = ${eventId}::uuid` : Prisma.empty}
-      ${Prisma.join(dateClauses(), '')}
+      WHERE ${Prisma.join(buildWhereClausesForTable('EventRegistration'), ' AND ')}
       GROUP BY 1
       ORDER BY 1
     `,
@@ -327,9 +335,10 @@ async function getOverview(payload) {
 async function getUserGrowth(interval, start, endExclusive) {
   const trunc = interval === 'DAY' ? 'day' : interval === 'WEEK' ? 'week' : 'month';
   const truncExpression = Prisma.raw(`'${trunc}'`);
-  const dateClauses = [Prisma.sql`AND "createdAt" IS NOT NULL`];
-  if (start) dateClauses.push(Prisma.sql`AND "createdAt" >= ${start}`);
-  if (endExclusive) dateClauses.push(Prisma.sql`AND "createdAt" < ${endExclusive}`);
+  const clauses = [Prisma.sql`1 = 1`];
+  clauses.push(Prisma.sql`"createdAt" IS NOT NULL`);
+  if (start) clauses.push(Prisma.sql`"createdAt" >= ${start}`);
+  if (endExclusive) clauses.push(Prisma.sql`"createdAt" < ${endExclusive}`);
 
   const rows = await prisma.$queryRaw`
     SELECT
@@ -339,7 +348,7 @@ async function getUserGrowth(interval, start, endExclusive) {
       COUNT(*) FILTER (WHERE "role" = 'FACULTY')::int AS faculty,
       COUNT(*) FILTER (WHERE "role" = 'ADMIN')::int AS administrators
     FROM "User"
-    WHERE 1 = 1 ${Prisma.join(dateClauses, '')}
+    WHERE ${Prisma.join(clauses, ' AND ')}
     GROUP BY 1
     ORDER BY 1
   `;
@@ -414,10 +423,10 @@ async function getUsers(payload) {
     ? Prisma.sql`AND r."eventId" = ${appliedFilters.eventId}::uuid`
     : Prisma.empty;
   const participationDateFilter = [];
-  if (dateFilter?.gte) participationDateFilter.push(Prisma.sql`AND r."createdAt" >= ${dateFilter.gte}`);
-  if (dateFilter?.lt) participationDateFilter.push(Prisma.sql`AND r."createdAt" < ${dateFilter.lt}`);
+  if (dateFilter?.gte) participationDateFilter.push(Prisma.sql`r."createdAt" >= ${dateFilter.gte}`);
+  if (dateFilter?.lt) participationDateFilter.push(Prisma.sql`r."createdAt" < ${dateFilter.lt}`);
   const participationDateSql = participationDateFilter.length
-    ? Prisma.join(participationDateFilter, '')
+    ? Prisma.sql`AND ${Prisma.join(participationDateFilter, ' AND ')}`
     : Prisma.empty;
 
   const [participationRows, registrationCountRows, eventParticipationRows] = await Promise.all([
@@ -529,41 +538,110 @@ async function getUsers(payload) {
 async function getEventRegistrationGrowth(interval, start, endExclusive, eventId) {
   const trunc = interval === 'DAY' ? 'day' : interval === 'WEEK' ? 'week' : 'month';
   const unit = Prisma.raw(`'${trunc}'`);
-  const clauses = [];
-  if (start) clauses.push(Prisma.sql`AND "createdAt" >= ${start}`);
-  if (endExclusive) clauses.push(Prisma.sql`AND "createdAt" < ${endExclusive}`);
+  const clauses = [Prisma.sql`1 = 1`];
+  if (eventId) clauses.push(Prisma.sql`"eventId" = ${eventId}::uuid`);
+  if (start) clauses.push(Prisma.sql`"createdAt" >= ${start}`);
+  if (endExclusive) clauses.push(Prisma.sql`"createdAt" < ${endExclusive}`);
   const rows = await prisma.$queryRaw`
     SELECT date_trunc(${unit}, "createdAt") AS period,
       COUNT(*)::int AS registrations,
+      COUNT(*) FILTER (WHERE "status" = 'DRAFT')::int AS draft,
       COUNT(*) FILTER (WHERE "status" = 'CONFIRMED')::int AS confirmed,
-      COUNT(*) FILTER (WHERE "status" IN ('SUBMITTED', 'WAITLISTED'))::int AS pending
+      COUNT(*) FILTER (WHERE "status" IN ('SUBMITTED', 'WAITLISTED'))::int AS pending,
+      COUNT(*) FILTER (WHERE "status" = 'REJECTED')::int AS rejected,
+      COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::int AS cancelled,
+      COUNT(*) FILTER (WHERE "status" = 'WAITLISTED')::int AS waitlisted
     FROM "EventRegistration"
-    WHERE 1 = 1 ${eventId ? Prisma.sql`AND "eventId" = ${eventId}::uuid` : Prisma.empty}
-      ${Prisma.join(clauses, '')}
+    WHERE ${Prisma.join(clauses, ' AND ')}
     GROUP BY 1 ORDER BY 1
   `;
   return rows.map((row) => ({
     period: row.period.toISOString().slice(0, 10), registrations: Number(row.registrations),
-    confirmed: Number(row.confirmed), pending: Number(row.pending),
+    draft: Number(row.draft), confirmed: Number(row.confirmed), pending: Number(row.pending),
+    rejected: Number(row.rejected), cancelled: Number(row.cancelled), waitlisted: Number(row.waitlisted),
+  }));
+}
+
+async function getEventCreationGrowth(interval, start, endExclusive, eventId) {
+  const trunc = interval === 'DAY' ? 'day' : interval === 'WEEK' ? 'week' : 'month';
+  const unit = Prisma.raw(`'${trunc}'`);
+  const clauses = [Prisma.sql`"createdAt" IS NOT NULL`];
+  if (eventId) clauses.push(Prisma.sql`"id" = ${eventId}::uuid`);
+  if (start) clauses.push(Prisma.sql`"createdAt" >= ${start}`);
+  if (endExclusive) clauses.push(Prisma.sql`"createdAt" < ${endExclusive}`);
+
+  const rows = await prisma.$queryRaw`
+    SELECT date_trunc(${unit}, "createdAt") AS period,
+      COUNT(*)::int AS events,
+      COUNT(*) FILTER (WHERE "status" = 'PUBLISHED')::int AS published,
+      COUNT(*) FILTER (WHERE "status" = 'COMPLETED')::int AS completed,
+      COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::int AS cancelled
+    FROM "Event"
+    WHERE ${Prisma.join(clauses, ' AND ')}
+    GROUP BY 1
+    ORDER BY 1
+  `;
+
+  return rows.map((row) => ({
+    period: row.period.toISOString().slice(0, 10),
+    events: Number(row.events),
+    published: Number(row.published),
+    completed: Number(row.completed),
+    cancelled: Number(row.cancelled),
   }));
 }
 
 async function getEvents(payload) {
   const appliedFilters = normalizeAnalyticsFilters(payload);
   if (appliedFilters.eventId) {
-    const exists = await prisma.event.findUnique({ where: { id: appliedFilters.eventId }, select: { id: true } });
+    const exists = await prisma.event.findUnique({
+      where: { id: appliedFilters.eventId },
+      select: { id: true },
+    });
     if (!exists) throw httpError(404, 'Event not found.');
   }
+
   const dateFilter = buildCreatedAtFilter(appliedFilters.startDate, appliedFilters.endDate);
   const previous = getPreviousBounds(appliedFilters.startDate, appliedFilters.endDate);
   const previousFilter = previous.start ? { gte: previous.start, lt: previous.endExclusive } : null;
-  const eventScope = { ...(appliedFilters.eventId ? { id: appliedFilters.eventId } : {}), ...(dateFilter ? { createdAt: dateFilter } : {}) };
-  const registrationScope = { ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}), ...(dateFilter ? { createdAt: dateFilter } : {}) };
-  const previousEventScope = previousFilter ? { ...(appliedFilters.eventId ? { id: appliedFilters.eventId } : {}), createdAt: previousFilter } : null;
-  const previousRegistrationScope = previousFilter ? { ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}), createdAt: previousFilter } : null;
+
+  const eventScope = {
+    ...(appliedFilters.eventId ? { id: appliedFilters.eventId } : {}),
+    ...(!appliedFilters.eventId && dateFilter ? { createdAt: dateFilter } : {}),
+  };
+  const registrationScope = {
+    ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}),
+    ...(dateFilter ? { createdAt: dateFilter } : {}),
+  };
+  const previousEventScope = previousFilter
+    ? {
+      ...(appliedFilters.eventId ? { id: appliedFilters.eventId } : {}),
+      createdAt: previousFilter,
+    }
+    : null;
+  const previousRegistrationScope = previousFilter
+    ? {
+      ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}),
+      createdAt: previousFilter,
+    }
+    : null;
+
   const statuses = ['DRAFT', 'PUBLISHED', 'REGISTRATION_CLOSED', 'COMPLETED', 'CANCELLED'];
   const registrationStatuses = ['DRAFT', 'SUBMITTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'WAITLISTED'];
-  const [totalEvents, eventGroups, totalRegistrations, registrationGroups, previousEvents, previousRegistrations, previousConfirmed, participationRows, popularityRows, assignmentRows] = await Promise.all([
+
+  const [
+    totalEvents,
+    eventGroups,
+    totalRegistrations,
+    registrationGroups,
+    previousEvents,
+    previousRegistrations,
+    previousConfirmed,
+    participationRows,
+    previousParticipationRows,
+    popularityRows,
+    assignmentRows,
+  ] = await Promise.all([
     prisma.event.count({ where: eventScope }),
     prisma.event.groupBy({ by: ['status'], where: eventScope, _count: { _all: true } }),
     prisma.eventRegistration.count({ where: registrationScope }),
@@ -572,56 +650,566 @@ async function getEvents(payload) {
     previousRegistrationScope ? prisma.eventRegistration.count({ where: previousRegistrationScope }) : Promise.resolve(null),
     previousRegistrationScope ? prisma.eventRegistration.count({ where: { ...previousRegistrationScope, status: 'CONFIRMED' } }) : Promise.resolve(null),
     prisma.$queryRaw`
-      SELECT COUNT(DISTINCT r."teamId")::int AS teams, COUNT(DISTINCT tm."userId")::int AS students,
-        COUNT(tm."id")::int AS memberships
-      FROM "EventRegistration" r JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      SELECT
+        COUNT(DISTINCT r."teamId")::int AS teams,
+        COUNT(DISTINCT tm."userId")::int AS students,
+        COUNT(DISTINCT tm."id")::int AS memberships
+      FROM "EventRegistration" r
+      JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
       JOIN "User" u ON u."id" = tm."userId"
-      WHERE r."status" = 'CONFIRMED' AND tm."status" = 'ACTIVE' AND u."role" = 'STUDENT'
+      WHERE r."status" = 'CONFIRMED'
+        AND tm."status" = 'ACTIVE'
+        AND u."role" = 'STUDENT'
         ${appliedFilters.eventId ? Prisma.sql`AND r."eventId" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
         ${dateFilter?.gte ? Prisma.sql`AND r."createdAt" >= ${dateFilter.gte}` : Prisma.empty}
         ${dateFilter?.lt ? Prisma.sql`AND r."createdAt" < ${dateFilter.lt}` : Prisma.empty}
     `,
+    previousFilter ? prisma.$queryRaw`
+      SELECT
+        COUNT(DISTINCT r."teamId")::int AS teams,
+        COUNT(DISTINCT tm."userId")::int AS students
+      FROM "EventRegistration" r
+      JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      JOIN "User" u ON u."id" = tm."userId"
+      WHERE r."status" = 'CONFIRMED'
+        AND tm."status" = 'ACTIVE'
+        AND u."role" = 'STUDENT'
+        ${appliedFilters.eventId ? Prisma.sql`AND r."eventId" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
+        AND r."createdAt" >= ${previousFilter.gte}
+        AND r."createdAt" < ${previousFilter.lt}
+    ` : Promise.resolve([]),
     prisma.$queryRaw`
-      SELECT e."id" AS "eventId", e."title", e."status", COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'CONFIRMED')::int AS confirmed,
+      SELECT
+        e."id" AS "eventId",
+        e."title",
+        e."status",
+        COUNT(DISTINCT r."id")::int AS confirmed,
         COUNT(DISTINCT r."teamId") FILTER (WHERE r."status" = 'CONFIRMED')::int AS teams,
         COUNT(DISTINCT tm."userId") FILTER (WHERE r."status" = 'CONFIRMED' AND tm."status" = 'ACTIVE' AND u."role" = 'STUDENT')::int AS students
-      FROM "Event" e LEFT JOIN "EventRegistration" r ON r."eventId" = e."id"
-      LEFT JOIN "TeamMember" tm ON tm."teamId" = r."teamId" LEFT JOIN "User" u ON u."id" = tm."userId"
-      WHERE 1 = 1 ${appliedFilters.eventId ? Prisma.sql`AND e."id" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
-        ${dateFilter?.gte ? Prisma.sql`AND e."createdAt" >= ${dateFilter.gte}` : Prisma.empty}
-        ${dateFilter?.lt ? Prisma.sql`AND e."createdAt" < ${dateFilter.lt}` : Prisma.empty}
-      GROUP BY e."id", e."title", e."status" ORDER BY confirmed DESC, students DESC, e."title" ASC LIMIT 8
+      FROM "Event" e
+      LEFT JOIN "EventRegistration" r ON r."eventId" = e."id"
+        AND r."status" = 'CONFIRMED'
+        ${dateFilter?.gte ? Prisma.sql`AND r."createdAt" >= ${dateFilter.gte}` : Prisma.empty}
+        ${dateFilter?.lt ? Prisma.sql`AND r."createdAt" < ${dateFilter.lt}` : Prisma.empty}
+      LEFT JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      LEFT JOIN "User" u ON u."id" = tm."userId"
+      WHERE 1 = 1
+        ${appliedFilters.eventId ? Prisma.sql`AND e."id" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
+        ${!appliedFilters.eventId && dateFilter?.gte ? Prisma.sql`AND e."createdAt" >= ${dateFilter.gte}` : Prisma.empty}
+        ${!appliedFilters.eventId && dateFilter?.lt ? Prisma.sql`AND e."createdAt" < ${dateFilter.lt}` : Prisma.empty}
+      GROUP BY e."id", e."title", e."status"
+      ORDER BY confirmed DESC, students DESC, teams DESC, e."title" ASC
+      LIMIT 8
     `,
     appliedFilters.eventId ? prisma.$queryRaw`
-      SELECT (SELECT COUNT(*)::int FROM "EventFacultyAssignment" WHERE "eventId" = ${appliedFilters.eventId}::uuid) AS faculty,
-        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid) AS evaluators
+      SELECT
+        (SELECT COUNT(*)::int FROM "EventFacultyAssignment" WHERE "eventId" = ${appliedFilters.eventId}::uuid) AS faculty,
+        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid) AS evaluators,
+        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid AND "status" = 'PENDING') AS evaluator_pending,
+        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid AND "status" = 'REVOKED') AS evaluator_revoked,
+        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid AND "status" = 'EXPIRED') AS evaluator_expired,
+        (SELECT COUNT(*)::int FROM "EventEvaluatorInvitation" WHERE "eventId" = ${appliedFilters.eventId}::uuid AND "emailDeliveryStatus" = 'SENT') AS evaluator_email_sent
     ` : Promise.resolve([]),
   ]);
+
   const eventCounts = Object.fromEntries(eventGroups.map((row) => [row.status, row._count._all]));
   const registrationCounts = Object.fromEntries(registrationGroups.map((row) => [row.status, row._count._all]));
   const confirmedRegistrations = registrationCounts.CONFIRMED || 0;
   const pendingRegistrations = (registrationCounts.SUBMITTED || 0) + (registrationCounts.WAITLISTED || 0);
   const participation = participationRows[0] || {};
-  const teams = Number(participation.teams || 0), students = Number(participation.students || 0), memberships = Number(participation.memberships || 0);
-  const growth = await getEventRegistrationGrowth(appliedFilters.interval, ...Object.values(getUtcDateOnlyBounds(appliedFilters.startDate, appliedFilters.endDate)), appliedFilters.eventId);
+  const previousParticipation = previousParticipationRows[0] || {};
+  const teams = Number(participation.teams || 0);
+  const students = Number(participation.students || 0);
+  const memberships = Number(participation.memberships || 0);
+  const previousTeams = previousFilter ? Number(previousParticipation.teams || 0) : null;
+  const previousStudents = previousFilter ? Number(previousParticipation.students || 0) : null;
+
+  const { start, endExclusive } = getUtcDateOnlyBounds(appliedFilters.startDate, appliedFilters.endDate);
+  const eventGrowth = await getEventCreationGrowth(appliedFilters.interval, start, endExclusive, appliedFilters.eventId);
+  const registrationGrowth = await getEventRegistrationGrowth(
+    appliedFilters.interval,
+    start,
+    endExclusive,
+    appliedFilters.eventId,
+  );
+
   let eventDetails = null;
   if (appliedFilters.eventId) {
-    const event = await prisma.event.findUnique({ where: { id: appliedFilters.eventId }, select: { id: true, title: true, status: true, createdAt: true, startDate: true, endDate: true, registrationStartDate: true, registrationEndDate: true } });
-    eventDetails = { event, facultyAssignments: Number(assignmentRows[0]?.faculty || 0), evaluatorInvitations: Number(assignmentRows[0]?.evaluators || 0) };
+    const event = await prisma.event.findUnique({
+      where: { id: appliedFilters.eventId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        mode: true,
+        createdAt: true,
+        startDate: true,
+        endDate: true,
+        registrationStartDate: true,
+        registrationEndDate: true,
+        registrationCapacity: true,
+      },
+    });
+    const assignments = assignmentRows[0] || {};
+    eventDetails = {
+      event,
+      registrationSummary: {
+        total: totalRegistrations,
+        draft: registrationCounts.DRAFT || 0,
+        submitted: registrationCounts.SUBMITTED || 0,
+        confirmed: confirmedRegistrations,
+        pending: pendingRegistrations,
+        rejected: registrationCounts.REJECTED || 0,
+        cancelled: registrationCounts.CANCELLED || 0,
+        waitlisted: registrationCounts.WAITLISTED || 0,
+      },
+      participationSummary: {
+        participatingTeams: teams,
+        participatingStudents: students,
+        averageStudentsPerParticipatingTeam: teams ? Number((memberships / teams).toFixed(2)) : 0,
+      },
+      registrationActivity: {
+        trend: registrationGrowth,
+        statusDistribution: registrationStatuses.map((status) =>
+          distribution(status, registrationCounts[status] || 0, totalRegistrations)),
+      },
+      facultyAssignments: Number(assignments.faculty || 0),
+      evaluatorInvitations: {
+        total: Number(assignments.evaluators || 0),
+        pending: Number(assignments.evaluator_pending || 0),
+        revoked: Number(assignments.evaluator_revoked || 0),
+        expired: Number(assignments.evaluator_expired || 0),
+        emailSent: Number(assignments.evaluator_email_sent || 0),
+      },
+    };
   }
+
   return { appliedFilters, data: {
-    summary: { totalEvents, draftEvents: eventCounts.DRAFT || 0, publishedEvents: eventCounts.PUBLISHED || 0, activeEvents: (eventCounts.PUBLISHED || 0) + (eventCounts.REGISTRATION_CLOSED || 0), completedEvents: eventCounts.COMPLETED || 0, cancelledEvents: eventCounts.CANCELLED || 0, totalRegistrations, confirmedRegistrations, pendingRegistrations, participatingTeams: teams, participatingStudents: students, averageRegistrationsPerEvent: totalEvents ? Number((totalRegistrations / totalEvents).toFixed(2)) : 0 },
+    summary: {
+      totalEvents,
+      draftEvents: eventCounts.DRAFT || 0,
+      publishedEvents: eventCounts.PUBLISHED || 0,
+      activeEvents: (eventCounts.PUBLISHED || 0) + (eventCounts.REGISTRATION_CLOSED || 0),
+      completedEvents: eventCounts.COMPLETED || 0,
+      cancelledEvents: eventCounts.CANCELLED || 0,
+      totalRegistrations,
+      confirmedRegistrations,
+      pendingRegistrations,
+      participatingTeams: teams,
+      participatingStudents: students,
+      averageRegistrationsPerEvent: totalEvents
+        ? Number((totalRegistrations / totalEvents).toFixed(2))
+        : 0,
+      scope: appliedFilters.eventId ? 'EVENT' : 'PLATFORM',
+    },
     lifecycle: statuses.map((status) => distribution(status, eventCounts[status] || 0, totalEvents)),
-    eventGrowth: await getUserGrowth.call(null, appliedFilters.interval, ...Object.values(getUtcDateOnlyBounds(appliedFilters.startDate, appliedFilters.endDate))).then((rows) => rows.map(({ period, users }) => ({ period, events: users }))),
-    registrationTrends: growth,
+    eventGrowth,
+    registrationTrends: registrationGrowth,
     registrationStatus: registrationStatuses.map((status) => distribution(status, registrationCounts[status] || 0, totalRegistrations)),
-    popularity: popularityRows.map((row) => ({ eventId: row.eventId, title: row.title, status: row.status, confirmedRegistrations: Number(row.confirmed), participatingTeams: Number(row.teams), participatingStudents: Number(row.students) })),
-    participation: { participatingTeams: teams, participatingStudents: students, confirmedRegistrations, averageStudentsPerParticipatingTeam: teams ? Number((memberships / teams).toFixed(2)) : 0, definition: 'Distinct STUDENT users with ACTIVE TeamMember records in teams with CONFIRMED registrations. Date filtering uses registration creation time.' },
-    conversion: { confirmedRegistrations, totalRegistrations, currentConfirmationRate: totalRegistrations ? Number(((confirmedRegistrations / totalRegistrations) * 100).toFixed(2)) : 0, definition: 'Current confirmation rate, not a historical conversion funnel.' },
-    comparisons: { eventsCreated: comparison(totalEvents, previousEvents), registrationsReceived: comparison(totalRegistrations, previousRegistrations), confirmedRegistrations: comparison(confirmedRegistrations, previousConfirmed) },
+    popularity: popularityRows.map((row) => ({
+      eventId: row.eventId,
+      title: row.title,
+      status: row.status,
+      confirmedRegistrations: Number(row.confirmed),
+      participatingTeams: Number(row.teams),
+      participatingStudents: Number(row.students),
+    })),
+    participation: {
+      participatingTeams: teams,
+      participatingStudents: students,
+      confirmedRegistrations,
+      averageStudentsPerParticipatingTeam: teams
+        ? Number((memberships / teams).toFixed(2))
+        : 0,
+      definition: 'Distinct STUDENT users with ACTIVE TeamMember records in teams with CONFIRMED registrations.',
+    },
+    conversion: {
+      confirmedRegistrations,
+      totalRegistrations,
+      currentConfirmationRate: totalRegistrations
+        ? Number(((confirmedRegistrations / totalRegistrations) * 100).toFixed(2))
+        : 0,
+      definition: 'Current confirmation rate, not a historical conversion funnel.',
+    },
+    comparisons: {
+      eventsCreated: comparison(totalEvents, previousEvents),
+      registrationsReceived: comparison(totalRegistrations, previousRegistrations),
+      confirmedRegistrations: comparison(confirmedRegistrations, previousConfirmed),
+      participatingTeams: comparison(teams, previousTeams),
+      participatingStudents: comparison(students, previousStudents),
+    },
     eventDetails,
-    conventions: { activeEventStatuses: ['PUBLISHED', 'REGISTRATION_CLOSED'], pendingRegistrationStatuses: ['SUBMITTED', 'WAITLISTED'], eventScope: 'Event lifecycle and popularity use Event.createdAt; registration metrics and participation use EventRegistration.createdAt.' },
+    conventions: {
+      activeEventStatuses: ['PUBLISHED', 'REGISTRATION_CLOSED'],
+      pendingRegistrationStatuses: ['SUBMITTED', 'WAITLISTED'],
+      eventScope: appliedFilters.eventId
+        ? 'The selected event lifecycle is fixed to the event ID; registration metrics and trends use EventRegistration.createdAt.'
+        : 'Event lifecycle and event creation trends use Event.createdAt; registration metrics, participation, and popularity use EventRegistration.createdAt.',
+      popularityMetric: 'Ranked by confirmed registrations, then unique participating students, then unique participating teams, then event title.',
+      participationDefinition: 'Distinct STUDENT users with ACTIVE TeamMember records in teams with CONFIRMED registrations.',
+      historicalConversion: 'No attendance or historical status snapshot model is used; the confirmation rate reflects current status.',
+    },
   }};
 }
 
-module.exports = { getMetadata, getOverview, getUsers, getEvents };
+async function getTeamFormationGrowth(interval, start, endExclusive, eventId) {
+  const trunc = interval === 'DAY' ? 'day' : interval === 'WEEK' ? 'week' : 'month';
+  const unit = Prisma.raw(`'${trunc}'`);
+  const clauses = [Prisma.sql`t."createdAt" IS NOT NULL`];
+  if (eventId) clauses.push(Prisma.sql`t."eventId" = ${eventId}::uuid`);
+  if (start) clauses.push(Prisma.sql`t."createdAt" >= ${start}`);
+  if (endExclusive) clauses.push(Prisma.sql`t."createdAt" < ${endExclusive}`);
+
+  const rows = await prisma.$queryRaw`
+    SELECT
+      date_trunc(${unit}, t."createdAt") AS period,
+      COUNT(*)::int AS teams,
+      COUNT(*) FILTER (WHERE t."status" = 'ACTIVE')::int AS active,
+      COUNT(*) FILTER (WHERE t."status" = 'ARCHIVED')::int AS archived,
+      COUNT(*) FILTER (WHERE t."status" = 'DISBANDED')::int AS disbanded
+    FROM "Team" t
+    WHERE ${Prisma.join(clauses, ' AND ')}
+    GROUP BY 1
+    ORDER BY 1
+  `;
+
+  return rows.map((row) => ({
+    period: row.period.toISOString().slice(0, 10),
+    teams: Number(row.teams),
+    active: Number(row.active),
+    archived: Number(row.archived),
+    disbanded: Number(row.disbanded),
+  }));
+}
+
+async function getTeamsRegistrations(payload) {
+  const appliedFilters = normalizeAnalyticsFilters(payload);
+  if (appliedFilters.eventId) {
+    const exists = await prisma.event.findUnique({
+      where: { id: appliedFilters.eventId },
+      select: { id: true },
+    });
+    if (!exists) throw httpError(404, 'Event not found.');
+  }
+
+  const dateFilter = buildCreatedAtFilter(appliedFilters.startDate, appliedFilters.endDate);
+  const previous = getPreviousBounds(appliedFilters.startDate, appliedFilters.endDate);
+  const previousFilter = previous.start ? { gte: previous.start, lt: previous.endExclusive } : null;
+
+  // Scoping helpers
+  const teamScope = {
+    ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}),
+    ...(dateFilter ? { createdAt: dateFilter } : {}),
+  };
+  const regScope = {
+    ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}),
+    ...(dateFilter ? { createdAt: dateFilter } : {}),
+  };
+  const prevTeamScope = previousFilter
+    ? { ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}), createdAt: previousFilter }
+    : null;
+  const prevRegScope = previousFilter
+    ? { ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}), createdAt: previousFilter }
+    : null;
+
+  const eventIdSql = appliedFilters.eventId
+    ? Prisma.sql`AND t."eventId" = ${appliedFilters.eventId}::uuid`
+    : Prisma.empty;
+  const teamDateGte = dateFilter?.gte
+    ? Prisma.sql`AND t."createdAt" >= ${dateFilter.gte}`
+    : Prisma.empty;
+  const teamDateLt = dateFilter?.lt
+    ? Prisma.sql`AND t."createdAt" < ${dateFilter.lt}`
+    : Prisma.empty;
+  const regDateGte = dateFilter?.gte
+    ? Prisma.sql`AND r."createdAt" >= ${dateFilter.gte}`
+    : Prisma.empty;
+  const regDateLt = dateFilter?.lt
+    ? Prisma.sql`AND r."createdAt" < ${dateFilter.lt}`
+    : Prisma.empty;
+
+  const [
+    totalTeams,
+    teamStatusGroups,
+    totalRegistrations,
+    regStatusGroups,
+    prevTotalTeams,
+    prevTotalRegs,
+    prevConfirmedRegs,
+    // participation: teams with confirmed registrations, distinct students
+    participationRows,
+    prevParticipationRows,
+    // teams that have at least one registration
+    teamsWithRegRows,
+    // team size distribution: count of ACTIVE members per team
+    teamSizeRows,
+    // event-wise breakdown
+    eventWiseRows,
+    // popular teams: ranked by confirmed registrations
+    popularTeamRows,
+  ] = await Promise.all([
+    prisma.team.count({ where: teamScope }),
+    prisma.team.groupBy({ by: ['status'], where: teamScope, _count: { _all: true } }),
+    prisma.eventRegistration.count({ where: regScope }),
+    prisma.eventRegistration.groupBy({ by: ['status'], where: regScope, _count: { _all: true } }),
+    prevTeamScope ? prisma.team.count({ where: prevTeamScope }) : Promise.resolve(null),
+    prevRegScope ? prisma.eventRegistration.count({ where: prevRegScope }) : Promise.resolve(null),
+    prevRegScope ? prisma.eventRegistration.count({ where: { ...prevRegScope, status: 'CONFIRMED' } }) : Promise.resolve(null),
+    // Participation: distinct STUDENT users with ACTIVE TeamMember in teams with CONFIRMED registrations
+    prisma.$queryRaw`
+      SELECT
+        COUNT(DISTINCT r."teamId")::int AS confirmed_teams,
+        COUNT(DISTINCT tm."userId")::int AS students,
+        COUNT(DISTINCT tm."id")::int AS memberships
+      FROM "EventRegistration" r
+      JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      JOIN "User" u ON u."id" = tm."userId"
+      WHERE r."status" = 'CONFIRMED'
+        AND tm."status" = 'ACTIVE'
+        AND u."role" = 'STUDENT'
+        ${appliedFilters.eventId ? Prisma.sql`AND r."eventId" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
+        ${dateFilter?.gte ? Prisma.sql`AND r."createdAt" >= ${dateFilter.gte}` : Prisma.empty}
+        ${dateFilter?.lt ? Prisma.sql`AND r."createdAt" < ${dateFilter.lt}` : Prisma.empty}
+    `,
+    previousFilter ? prisma.$queryRaw`
+      SELECT
+        COUNT(DISTINCT r."teamId")::int AS confirmed_teams,
+        COUNT(DISTINCT tm."userId")::int AS students
+      FROM "EventRegistration" r
+      JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      JOIN "User" u ON u."id" = tm."userId"
+      WHERE r."status" = 'CONFIRMED'
+        AND tm."status" = 'ACTIVE'
+        AND u."role" = 'STUDENT'
+        ${appliedFilters.eventId ? Prisma.sql`AND r."eventId" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
+        AND r."createdAt" >= ${previousFilter.gte}
+        AND r."createdAt" < ${previousFilter.lt}
+    ` : Promise.resolve([]),
+    // Teams that have at least one registration (any status)
+    prisma.$queryRaw`
+      SELECT COUNT(DISTINCT t."id")::int AS teams_with_reg
+      FROM "Team" t
+      JOIN "EventRegistration" r ON r."teamId" = t."id"
+      WHERE 1 = 1
+        ${eventIdSql}
+        ${teamDateGte}
+        ${teamDateLt}
+    `,
+    // Team size distribution: bucket ACTIVE member counts per team
+    prisma.$queryRaw`
+      SELECT
+        CASE
+          WHEN active_members = 1 THEN '1'
+          WHEN active_members = 2 THEN '2'
+          WHEN active_members = 3 THEN '3'
+          WHEN active_members = 4 THEN '4'
+          WHEN active_members = 5 THEN '5'
+          ELSE '6+'
+        END AS bucket,
+        COUNT(*)::int AS team_count
+      FROM (
+        SELECT t."id", COUNT(tm."id")::int AS active_members
+        FROM "Team" t
+        LEFT JOIN "TeamMember" tm ON tm."teamId" = t."id" AND tm."status" = 'ACTIVE'
+        WHERE 1 = 1
+          ${eventIdSql}
+          ${teamDateGte}
+          ${teamDateLt}
+        GROUP BY t."id"
+      ) sub
+      GROUP BY bucket
+      ORDER BY bucket
+    `,
+    // Event-wise breakdown
+    prisma.$queryRaw`
+      SELECT
+        e."id" AS "eventId",
+        e."title",
+        e."status" AS "eventStatus",
+        COUNT(DISTINCT t."id")::int AS total_teams,
+        COUNT(DISTINCT r."id")::int AS total_regs,
+        COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'CONFIRMED')::int AS confirmed_regs,
+        COUNT(DISTINCT r."id") FILTER (WHERE r."status" IN ('SUBMITTED', 'WAITLISTED'))::int AS pending_regs,
+        COUNT(DISTINCT tm."userId") FILTER (WHERE r."status" = 'CONFIRMED' AND tm."status" = 'ACTIVE' AND u."role" = 'STUDENT')::int AS students,
+        CASE
+          WHEN COUNT(DISTINCT r."id") = 0 THEN 0
+          ELSE ROUND(
+            COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'CONFIRMED')::numeric
+            / COUNT(DISTINCT r."id")::numeric * 100, 2
+          )
+        END AS confirmation_rate
+      FROM "Event" e
+      LEFT JOIN "Team" t ON t."eventId" = e."id"
+        ${teamDateGte}
+        ${teamDateLt}
+      LEFT JOIN "EventRegistration" r ON r."eventId" = e."id"
+        ${regDateGte}
+        ${regDateLt}
+      LEFT JOIN "TeamMember" tm ON tm."teamId" = r."teamId"
+      LEFT JOIN "User" u ON u."id" = tm."userId"
+      WHERE 1 = 1
+        ${appliedFilters.eventId ? Prisma.sql`AND e."id" = ${appliedFilters.eventId}::uuid` : Prisma.empty}
+      GROUP BY e."id", e."title", e."status"
+      ORDER BY confirmed_regs DESC, total_teams DESC, e."title" ASC
+      LIMIT 10
+    `,
+    // Popular teams: ranked by confirmed registrations, then active member count
+    prisma.$queryRaw`
+      SELECT
+        t."id" AS "teamId",
+        t."name",
+        t."status",
+        e."title" AS "eventTitle",
+        COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'CONFIRMED')::int AS confirmed_regs,
+        COUNT(DISTINCT tm."id") FILTER (WHERE tm."status" = 'ACTIVE')::int AS active_members,
+        COUNT(DISTINCT r."id")::int AS total_regs
+      FROM "Team" t
+      JOIN "Event" e ON e."id" = t."eventId"
+      LEFT JOIN "EventRegistration" r ON r."teamId" = t."id"
+        ${regDateGte}
+        ${regDateLt}
+      LEFT JOIN "TeamMember" tm ON tm."teamId" = t."id"
+      WHERE 1 = 1
+        ${eventIdSql}
+        ${teamDateGte}
+        ${teamDateLt}
+      GROUP BY t."id", t."name", t."status", e."title"
+      ORDER BY confirmed_regs DESC, active_members DESC, t."name" ASC
+      LIMIT 10
+    `,
+  ]);
+
+  // Derive counts
+  const teamCounts = Object.fromEntries(teamStatusGroups.map((r) => [r.status, r._count._all]));
+  const regCounts = Object.fromEntries(regStatusGroups.map((r) => [r.status, r._count._all]));
+  const confirmedRegs = regCounts.CONFIRMED || 0;
+  const pendingRegs = (regCounts.SUBMITTED || 0) + (regCounts.WAITLISTED || 0);
+
+  const part = participationRows[0] || {};
+  const prevPart = prevParticipationRows[0] || {};
+  const confirmedTeams = Number(part.confirmed_teams || 0);
+  const participatingStudents = Number(part.students || 0);
+  const totalMemberships = Number(part.memberships || 0);
+  const prevConfirmedTeams = previousFilter ? Number(prevPart.confirmed_teams || 0) : null;
+  const prevStudents = previousFilter ? Number(prevPart.students || 0) : null;
+
+  const teamsWithReg = Number(teamsWithRegRows[0]?.teams_with_reg || 0);
+  const teamsWithoutReg = Math.max(totalTeams - teamsWithReg, 0);
+
+  // Active member count across all scoped teams
+  const activeMemberCount = await prisma.teamMember.count({
+    where: {
+      status: 'ACTIVE',
+      team: {
+        ...(appliedFilters.eventId ? { eventId: appliedFilters.eventId } : {}),
+        ...(dateFilter ? { createdAt: dateFilter } : {}),
+      },
+    },
+  });
+
+  const avgMembersPerTeam = totalTeams ? Number((activeMemberCount / totalTeams).toFixed(2)) : 0;
+  const avgMembersPerConfirmedTeam = confirmedTeams
+    ? Number((totalMemberships / confirmedTeams).toFixed(2))
+    : 0;
+
+  // Team size distribution — ordered buckets
+  const bucketOrder = ['1', '2', '3', '4', '5', '6+'];
+  const sizeMap = new Map(teamSizeRows.map((r) => [String(r.bucket), Number(r.team_count)]));
+  const teamSizeDistribution = bucketOrder.map((bucket) => ({
+    bucket,
+    count: sizeMap.get(bucket) || 0,
+  }));
+
+  // Trends
+  const { start, endExclusive } = getUtcDateOnlyBounds(appliedFilters.startDate, appliedFilters.endDate);
+  const [teamGrowth, registrationTrend] = await Promise.all([
+    getTeamFormationGrowth(appliedFilters.interval, start, endExclusive, appliedFilters.eventId),
+    getEventRegistrationGrowth(appliedFilters.interval, start, endExclusive, appliedFilters.eventId),
+  ]);
+
+  const teamStatuses = ['ACTIVE', 'ARCHIVED', 'DISBANDED'];
+  const regStatuses = ['DRAFT', 'SUBMITTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'WAITLISTED'];
+
+  return {
+    appliedFilters,
+    data: {
+      teamSummary: {
+        totalTeams,
+        activeTeams: teamCounts.ACTIVE || 0,
+        archivedTeams: teamCounts.ARCHIVED || 0,
+        disbandedTeams: teamCounts.DISBANDED || 0,
+        teamsWithRegistration: teamsWithReg,
+        teamsWithoutRegistration: teamsWithoutReg,
+        activeMemberCount,
+        averageMembersPerTeam: avgMembersPerTeam,
+        scope: appliedFilters.eventId ? 'EVENT' : 'PLATFORM',
+      },
+      registrationSummary: {
+        totalRegistrations,
+        confirmedRegistrations: confirmedRegs,
+        pendingRegistrations: pendingRegs,
+        submittedRegistrations: regCounts.SUBMITTED || 0,
+        waitlistedRegistrations: regCounts.WAITLISTED || 0,
+        rejectedRegistrations: regCounts.REJECTED || 0,
+        cancelledRegistrations: regCounts.CANCELLED || 0,
+        draftRegistrations: regCounts.DRAFT || 0,
+        scope: appliedFilters.eventId ? 'EVENT' : 'PLATFORM',
+      },
+      participation: {
+        confirmedTeams,
+        participatingStudents,
+        averageMembersPerConfirmedTeam: avgMembersPerConfirmedTeam,
+        definition: 'Confirmed teams: distinct teams with CONFIRMED registrations. Participating students: distinct STUDENT users with ACTIVE TeamMember records in those teams.',
+      },
+      teamStatusDistribution: teamStatuses.map((s) => distribution(s, teamCounts[s] || 0, totalTeams)),
+      registrationStatusDistribution: regStatuses.map((s) => distribution(s, regCounts[s] || 0, totalRegistrations)),
+      teamSizeDistribution,
+      teamGrowth,
+      registrationTrend,
+      eventWise: eventWiseRows.map((row) => ({
+        eventId: row.eventId,
+        title: row.title,
+        eventStatus: row.eventStatus,
+        totalTeams: Number(row.total_teams),
+        totalRegistrations: Number(row.total_regs),
+        confirmedRegistrations: Number(row.confirmed_regs),
+        pendingRegistrations: Number(row.pending_regs),
+        participatingStudents: Number(row.students),
+        confirmationRate: Number(row.confirmation_rate),
+      })),
+      popularTeams: popularTeamRows.map((row) => ({
+        teamId: row.teamId,
+        name: row.name,
+        status: row.status,
+        eventTitle: row.eventTitle,
+        confirmedRegistrations: Number(row.confirmed_regs),
+        activeMembers: Number(row.active_members),
+        totalRegistrations: Number(row.total_regs),
+      })),
+      conversion: {
+        totalRegistrations,
+        confirmedRegistrations: confirmedRegs,
+        currentConfirmationRate: totalRegistrations
+          ? Number(((confirmedRegs / totalRegistrations) * 100).toFixed(2))
+          : 0,
+        definition: 'Current confirmation rate = confirmed registrations / total registrations × 100. Reflects current status, not historical transitions.',
+      },
+      comparisons: {
+        totalTeams: comparison(totalTeams, prevTotalTeams),
+        totalRegistrations: comparison(totalRegistrations, prevTotalRegs),
+        confirmedRegistrations: comparison(confirmedRegs, prevConfirmedRegs),
+        confirmedTeams: comparison(confirmedTeams, prevConfirmedTeams),
+        participatingStudents: comparison(participatingStudents, prevStudents),
+      },
+      conventions: {
+        teamStatuses: ['ACTIVE', 'ARCHIVED', 'DISBANDED'],
+        pendingRegistrationStatuses: ['SUBMITTED', 'WAITLISTED'],
+        participationDefinition: 'Distinct STUDENT users with ACTIVE TeamMember records in teams with CONFIRMED registrations.',
+        averageMembersBasis: 'ACTIVE TeamMember records divided by total scoped teams.',
+        confirmationRateBasis: 'Current registration status; no historical status transitions are used.',
+      },
+    },
+  };
+}
+
+module.exports = { getMetadata, getOverview, getUsers, getEvents, getTeamsRegistrations };

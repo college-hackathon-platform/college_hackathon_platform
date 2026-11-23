@@ -63,6 +63,26 @@ No team member, registration status, or capacity metric should assume a fourth e
 - Average registrations per participating student uses distinct confirmed `EventRegistration` rows divided by distinct participating students.
 - The platform has no last-login or login-history model; engagement is measured only through event participation.
 
+## Task 4 event analytics interpretation
+
+- Event lifecycle totals use `Event.status` and the actual `EventStatus` enum.
+- Draft events use `DRAFT`; published events use `PUBLISHED`; completed events use `COMPLETED`; cancelled events use `CANCELLED`.
+- Active events use the established platform lifecycle definition: `PUBLISHED` or `REGISTRATION_CLOSED`. `PUBLISHED` is not inferred to mean actively open from a date alone.
+- Event creation trends use `Event.createdAt`, never `Event.startDate`.
+- Registration totals and trends use `EventRegistration.createdAt`; `registeredAt` is not used because it may be null.
+- Confirmed registrations use current status `CONFIRMED`.
+- Pending registrations use current statuses `SUBMITTED` or `WAITLISTED`.
+- A participating team is a distinct `Team` in a registration whose current status is `CONFIRMED`.
+- A participating student is a distinct `STUDENT` user with an `ACTIVE` TeamMember record in a team that has a `CONFIRMED` EventRegistration.
+- Average registrations per event is total registrations divided by the scoped event count. Events without registrations remain in the denominator only when they are in the event scope.
+- Average students per participating team is distinct active student memberships divided by distinct participating teams.
+- The confirmation rate is `CONFIRMED registrations / all registrations x 100`; it is a current-status rate, not a historical funnel conversion.
+- Popular events are ranked by confirmed registrations, then distinct participating students, then distinct participating teams, then event title.
+- Date filters apply to `Event.createdAt` for platform event lifecycle and creation counts. They apply to `EventRegistration.createdAt` for registration, participation, and registration-based popularity metrics.
+- Selecting an event scopes event lifecycle and individual-event values to that event while registration and participation date filters remain based on registration creation time.
+- Previous-period comparisons require both start and end dates and use equivalent-duration immediately preceding UTC periods.
+- The platform stores current registration status and status history transitions, but event analytics trends show registration creation counts and current status buckets. It does not infer historical status transitions into time-series values.
+
 ## Response conventions
 
 - API responses use `success`, `message`, `data`, and optional `filters`.
