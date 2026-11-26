@@ -34,6 +34,7 @@ router.get('/users/statistics', adminController.getStatistics);
 router.get('/users', adminController.listUsers);
 router.post('/users/faculty', adminController.createFaculty);
 router.get('/users/:userId', adminController.getUserById);
+router.patch('/users/:userId/role', adminController.updateUserRole);
 router.patch('/users/:userId/status', adminController.updateUserStatus);
 router.patch('/users/:userId', adminController.updateUser);
 router.get('/settings', platformSettingsController.getSettings);

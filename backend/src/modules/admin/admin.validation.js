@@ -23,6 +23,10 @@ const updateStatusSchema = z.object({
   status: statuses,
 }).strict();
 
+const updateRoleSchema = z.object({
+  role: roles,
+}).strict();
+
 const createFacultySchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters long.').max(100, 'Name is too long.'),
   email: z.string().transform((value) => String(value).trim().toLowerCase()).pipe(z.string().email('Please provide a valid email address.')),
@@ -34,5 +38,6 @@ module.exports = {
   userIdSchema,
   updateUserSchema,
   updateStatusSchema,
+  updateRoleSchema,
   createFacultySchema,
 };

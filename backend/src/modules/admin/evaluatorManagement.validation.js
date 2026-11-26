@@ -8,7 +8,7 @@ const inviteEvaluatorSchema = z.object({
   email: z.string().trim().toLowerCase().max(255).pipe(z.string().email('Please provide a valid email address.')),
   designation: z.string().trim().min(2, 'Designation must be at least 2 characters.').max(255, 'Designation is too long.'),
   organization: z.string().trim().max(255, 'Organization is too long.').optional().or(z.literal('')),
-  phone: z.string().trim().max(40, 'Phone number is too long.').regex(/^[+\d][\d\s().-]{6,19}$/, 'Please provide a valid phone number.').optional().or(z.literal('')),
+  phone: z.union([z.literal(''), z.string().trim().max(40, 'Phone number is too long.').regex(/^[+\d][\d\s().-]{6,19}$/, 'Please provide a valid phone number.')]).optional(),
   invitationMessage: z.string().trim().max(2000, 'Invitation message is too long.').optional().or(z.literal('')),
 }).strict();
 

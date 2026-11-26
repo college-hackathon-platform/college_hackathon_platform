@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from '../../components/admin/EmptyState'
 import PageHeader from '../../components/admin/PageHeader'
@@ -13,6 +13,14 @@ import {
 } from '../../services/teamRegistrationService'
 import { getApiErrorMessage } from '../../services/api'
 
+function formatRefreshedTime(date) {
+  if (!date) return ''
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  }).format(date)
+}
+
 export default function AdminOverview() {
   const [userStats, setUserStats] = useState(null)
   const [eventStats, setEventStats] = useState(null)
@@ -20,9 +28,14 @@ export default function AdminOverview() {
   const [registrationStats, setRegistrationStats] = useState(null)
   const [upcomingEvents, setUpcomingEvents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const refreshLockRef = useRef(false)
 
   const loadOverview = useCallback(async () => {
+    if (refreshLockRef.current) return
+    refreshLockRef.current = true
     setLoading(true)
     setError('')
 
@@ -72,13 +85,25 @@ export default function AdminOverview() {
     }
 
     setError(failures.length ? failures.join(' ') : '')
+    setLastRefreshed(new Date())
     setLoading(false)
+    refreshLockRef.current = false
   }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadOverview()
   }, [loadOverview])
+
+  async function handleManualRefresh() {
+    if (refreshLockRef.current) return
+    setRefreshing(true)
+    try {
+      await loadOverview()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const userCards = [
     { label: 'Total Users', value: userStats?.totalUsers, description: 'Real platform account count', icon: 'users' },
@@ -104,13 +129,21 @@ export default function AdminOverview() {
         title="Platform overview"
         description="Administrative summary and shortcuts."
         actions={
-          <Link
-            className="admin-primary-button"
-            to="/admin/events"
-          >
-            <span className="admin-button-plus">+</span>
-            Create event
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleManualRefresh()}
+              disabled={refreshing}
+              className="min-h-11 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+              aria-label="Refresh dashboard"
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <Link className="admin-primary-button" to="/admin/events">
+              <span className="admin-button-plus">+</span>
+              Create event
+            </Link>
+          </div>
         }
       />
 
@@ -119,8 +152,9 @@ export default function AdminOverview() {
           <span>{error}</span>
           <button
             type="button"
-            onClick={() => void loadOverview()}
-            className="min-h-9 rounded-lg border border-red-200 bg-white px-3 font-bold text-red-700 hover:bg-red-100 focus:outline-none focus:ring-3 focus:ring-red-100"
+            onClick={() => void handleManualRefresh()}
+            disabled={refreshing}
+            className="min-h-9 rounded-lg border border-red-200 bg-white px-3 font-bold text-red-700 hover:bg-red-100 focus:outline-none focus:ring-3 focus:ring-red-100 disabled:opacity-60"
           >
             Retry
           </button>
@@ -137,11 +171,18 @@ export default function AdminOverview() {
         <>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold text-slate-700">User overview</h2>
-            {suspendedInactive !== null && (
-              <span className="text-xs font-semibold text-slate-500">
-                Suspended users: {suspendedInactive}
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {suspendedInactive !== null && (
+                <span className="text-xs font-semibold text-slate-500">
+                  Suspended users: {suspendedInactive}
+                </span>
+              )}
+              {lastRefreshed && (
+                <span className="text-xs text-slate-400">
+                  Last refreshed: {formatRefreshedTime(lastRefreshed)}
+                </span>
+              )}
+            </div>
           </div>
           <div className="admin-stat-grid" aria-label="User statistics">
             {userCards.map((stat) => (
@@ -172,8 +213,8 @@ export default function AdminOverview() {
         <SectionCard title="Recent activity" description="Latest platform actions">
           <EmptyState
             icon="clipboard"
-            title="No recent activity available"
-            description="Activity data has not been connected."
+            title="Activity history is not available"
+            description="An activity or audit log has not been implemented in this platform."
           />
         </SectionCard>
 
@@ -192,7 +233,7 @@ export default function AdminOverview() {
               {upcomingEvents.slice(0, 5).map((event) => (
                 <Link
                   key={event.id}
-                  to="/admin/events"
+                  to={`/admin/events?eventId=${encodeURIComponent(event.id)}`}
                   className="flex items-center justify-between gap-4 px-4 py-3 text-sm hover:bg-slate-50 focus:outline-none focus:ring-3 focus:ring-blue-100"
                 >
                   <span className="min-w-0">
@@ -222,17 +263,40 @@ export default function AdminOverview() {
         </SectionCard>
 
         <SectionCard title="Platform status" description="Current integration status">
-          <div className="admin-status-row">
-            <span className="admin-status-dot" aria-hidden="true" />
-            <div className="grid gap-1">
-              <strong>{teamStats ? `${teamStats.activeTeams ?? 0} active teams` : 'Team metrics not available yet'}</strong>
-              <p>
-                {registrationStats
-                  ? `${registrationStats.total ?? 0} registrations recorded`
-                  : 'Registration metrics not available yet'}
-              </p>
+          {teamStats || registrationStats ? (
+            <div className="grid gap-3">
+              <div className="admin-status-row">
+                <span className="admin-status-dot" aria-hidden="true" />
+                <div className="grid gap-1">
+                  <strong>{teamStats ? `${teamStats.totalTeams ?? 0} total teams` : 'Team stats unavailable'}</strong>
+                  {teamStats && (
+                    <p className="text-xs text-slate-500">
+                      {teamStats.activeTeams ?? 0} active · {teamStats.totalMembers ?? 0} members
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="admin-status-row">
+                <span className="admin-status-dot" aria-hidden="true" />
+                <div className="grid gap-1">
+                  <strong>{registrationStats ? `${registrationStats.total ?? 0} total registrations` : 'Registration stats unavailable'}</strong>
+                  {registrationStats && (
+                    <p className="text-xs text-slate-500">
+                      {registrationStats.confirmed ?? 0} confirmed · {registrationStats.submitted ?? 0} pending · {registrationStats.waitlisted ?? 0} waitlisted
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="admin-status-row">
+              <span className="admin-status-dot" aria-hidden="true" />
+              <div className="grid gap-1">
+                <strong>Statistics unavailable</strong>
+                <p>Unable to load team or registration data.</p>
+              </div>
+            </div>
+          )}
         </SectionCard>
       </div>
     </>

@@ -27,6 +27,14 @@ const EVENT_SELECT = {
   createdBy: { select: { id: true, name: true, email: true, role: true } },
 };
 
+const EVENT_DETAIL_SELECT = {
+  ...EVENT_SELECT,
+  _count: { select: { registrations: true, teams: true, facultyAssignments: true, evaluatorInvitations: true } },
+  registrations: { select: { status: true } },
+  facultyAssignments: { select: { id: true, facultyId: true, assignedAt: true, faculty: { select: { id: true, name: true, email: true } } } },
+  evaluatorInvitations: { select: { id: true, name: true, email: true, designation: true, organization: true, status: true, emailDeliveryStatus: true } },
+};
+
 function httpError(statusCode, message, fieldErrors = null) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -178,7 +186,7 @@ async function listEvents({ page, limit, search, status, mode, sortBy, sortOrder
 }
 
 async function getEventById(eventId) {
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: EVENT_SELECT });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: EVENT_DETAIL_SELECT });
   if (!event) throw httpError(404, 'Event not found.');
   return event;
 }
@@ -210,6 +218,7 @@ async function updateEvent(eventId, payload) {
 
 async function updateEventStatus(eventId, requestedStatus) {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${eventId}::uuid FOR UPDATE`;
     const event = await tx.event.findUnique({ where: { id: eventId } });
     if (!event) throw httpError(404, 'Event not found.');
 
@@ -233,7 +242,7 @@ async function updateEventStatus(eventId, requestedStatus) {
     if (requestedStatus === 'CANCELLED') data.cancelledAt = now;
 
     return tx.event.update({ where: { id: eventId }, data, select: EVENT_SELECT });
-  });
+  }, { isolationLevel: 'Serializable', timeout: 10000 });
 }
 
 async function getEventStatistics() {

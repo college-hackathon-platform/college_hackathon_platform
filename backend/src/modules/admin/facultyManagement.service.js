@@ -59,10 +59,12 @@ async function getFaculty(facultyId) {
 async function assignFaculty(eventId, facultyId, assignedById) {
   return prisma.$transaction(async (tx) => {
     const [event, faculty] = await Promise.all([
-      tx.event.findUnique({ where: { id: eventId }, select: { id: true, title: true } }),
+      tx.event.findUnique({ where: { id: eventId }, select: { id: true, title: true, status: true } }),
       tx.user.findUnique({ where: { id: facultyId }, select: { id: true, name: true, email: true, role: true, status: true } }),
     ]);
     if (!event) throw httpError(404, 'Event not found.');
+    if (event.status === 'CANCELLED') throw httpError(409, 'Faculty cannot be assigned to a cancelled event.');
+    if (event.status === 'COMPLETED') throw httpError(409, 'Faculty cannot be assigned to a completed event.');
     if (!faculty || faculty.role !== 'FACULTY') throw httpError(404, 'Faculty member not found.');
     if (faculty.status !== 'ACTIVE') throw httpError(409, 'Only active Faculty accounts can be assigned.');
 
@@ -85,10 +87,16 @@ async function assignFaculty(eventId, facultyId, assignedById) {
 }
 
 async function removeAssignment(eventId, facultyId) {
-  const assignment = await prisma.eventFacultyAssignment.findUnique({
-    where: { eventId_facultyId: { eventId, facultyId } },
-  });
+  const [assignment, event] = await Promise.all([
+    prisma.eventFacultyAssignment.findUnique({
+      where: { eventId_facultyId: { eventId, facultyId } },
+    }),
+    prisma.event.findUnique({ where: { id: eventId }, select: { id: true, status: true } }),
+  ]);
   if (!assignment) throw httpError(404, 'Faculty assignment not found.');
+  if (event && (event.status === 'COMPLETED' || event.status === 'CANCELLED')) {
+    throw httpError(409, `Cannot modify faculty assignments for a ${event.status.toLowerCase()} event.`);
+  }
   await prisma.eventFacultyAssignment.delete({
     where: { eventId_facultyId: { eventId, facultyId } },
   });
