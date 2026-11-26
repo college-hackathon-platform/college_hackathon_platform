@@ -3,6 +3,7 @@ const {
   userIdSchema,
   updateUserSchema,
   updateStatusSchema,
+  updateRoleSchema,
   createFacultySchema,
 } = require('./admin.validation');
 const adminService = require('./admin.service');
@@ -66,6 +67,27 @@ async function updateUser(req, res, next) {
   }
 }
 
+async function updateUserRole(req, res, next) {
+  try {
+    const userId = userIdSchema.parse(req.params.userId);
+    const payload = updateRoleSchema.parse(req.body);
+    const result = await adminService.updateUserRole(userId, payload.role, req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      message: result.changed
+        ? "User role changed to " + payload.role + '.'
+        : "User role is already " + payload.role + '.',
+      data: result,
+    });
+  } catch (error) {
+    if (error && error.name === 'ZodError') {
+      return zodErrorResponse(res, error, 'Invalid user role data.');
+    }
+    return next(error);
+  }
+}
+
 async function updateUserStatus(req, res, next) {
   try {
     const userId = userIdSchema.parse(req.params.userId);
@@ -122,6 +144,7 @@ module.exports = {
   getUserById,
   updateUser,
   updateUserStatus,
+  updateUserRole,
   createFaculty,
   getStatistics,
 };

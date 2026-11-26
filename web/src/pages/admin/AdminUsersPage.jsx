@@ -3,12 +3,14 @@ import PageHeader from '../../components/admin/PageHeader'
 import StatCard from '../../components/admin/StatCard'
 import EmptyState from '../../components/admin/EmptyState'
 import AdminIcon from '../../components/admin/AdminIcon'
+import { useAuth } from '../../context/useAuth'
 import {
   createFaculty,
   getAdminUserById,
   getAdminUserStatistics,
   getAdminUsers,
   updateAdminUser,
+  updateAdminUserRole,
   updateAdminUserStatus,
 } from '../../services/adminUsersService'
 import { getApiErrorMessage } from '../../services/api'
@@ -38,26 +40,128 @@ function Modal({ title, onClose, children, size = '' }) {
   )
 }
 
-function DetailsModal({ user, onClose, onEdit }) {
+function DetailsModal({ user, onClose, onEdit, onChangeRole, onStatusAction, currentAdminId }) {
+  const isSelf = user.id === currentAdminId
+  const counts = user._count || {}
+  const ledTeams = user.ledTeams || []
+  const teamMemberships = user.teamMemberships || []
+  const facultyAssignments = user.facultyAssignments || []
+  const evaluatorInvitations = user.createdEvaluatorInvitations || []
+
   return (
-    <Modal title="User Details" onClose={onClose}>
-      <dl className="admin-details-list">
-        <div><dt>Name</dt><dd>{user.name}</dd></div>
-        <div><dt>Email</dt><dd>{user.email}</dd></div>
-        <div><dt>Role</dt><dd><span className="admin-role-badge">{user.role}</span></dd></div>
-        <div><dt>Account Status</dt><dd><span className={`admin-status-badge status-${user.status.toLowerCase()}`}>{user.status}</span></dd></div>
-        <div><dt>Created</dt><dd>{formatDate(user.createdAt)}</dd></div>
-        <div><dt>Updated</dt><dd>{formatDate(user.updatedAt)}</dd></div>
-      </dl>
+    <Modal title="User Details" onClose={onClose} size="admin-modal-lg">
+      <div className="admin-details-sections">
+        <section className="admin-details-section">
+          <h3>Account Information</h3>
+          <dl className="admin-details-list">
+            <div><dt>Name</dt><dd>{user.name}</dd></div>
+            <div><dt>Email</dt><dd>{user.email}</dd></div>
+            <div>
+              <dt>Role</dt>
+              <dd>
+                <span className="admin-role-badge">{user.role}</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Account Status</dt>
+              <dd>
+                <span className={`admin-status-badge status-${user.status.toLowerCase()}`}>{user.status}</span>
+              </dd>
+            </div>
+            <div><dt>User ID</dt><dd><code>{user.id}</code></dd></div>
+            <div><dt>Registered</dt><dd>{formatDate(user.createdAt)}</dd></div>
+            <div><dt>Last Updated</dt><dd>{formatDate(user.updatedAt)}</dd></div>
+          </dl>
+        </section>
+
+        <section className="admin-details-section">
+          <h3>Participation & Activity Summary</h3>
+          <dl className="admin-details-list">
+            <div><dt>Teams Led</dt><dd>{counts.ledTeams ?? 0}</dd></div>
+            <div><dt>Team Memberships</dt><dd>{counts.teamMemberships ?? 0}</dd></div>
+            {counts.createdEvents > 0 && <div><dt>Events Created</dt><dd>{counts.createdEvents}</dd></div>}
+            {counts.facultyAssignments > 0 && <div><dt>Faculty Assignments</dt><dd>{counts.facultyAssignments}</dd></div>}
+            {counts.createdEvaluatorInvitations > 0 && <div><dt>Evaluator Invites Issued</dt><dd>{counts.createdEvaluatorInvitations}</dd></div>}
+          </dl>
+        </section>
+
+        {ledTeams.length > 0 && (
+          <section className="admin-details-section">
+            <h3>Teams Led (Recent)</h3>
+            <ul className="admin-mini-list">
+              {ledTeams.map((t) => (
+                <li key={t.id} className="admin-mini-item">
+                  <strong>{t.name}</strong>
+                  <span>Event: {t.event?.title || 'Unknown'} ({t.status})</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {teamMemberships.length > 0 && (
+          <section className="admin-details-section">
+            <h3>Team Memberships (Recent)</h3>
+            <ul className="admin-mini-list">
+              {teamMemberships.map((m) => (
+                <li key={m.id} className="admin-mini-item">
+                  <span><strong>{m.team?.name || 'Unnamed Team'}</strong> — {m.role} ({m.status})</span>
+                  <span>Event: {m.team?.event?.title || 'Unknown'}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {facultyAssignments.length > 0 && (
+          <section className="admin-details-section">
+            <h3>Faculty Assignments (Recent)</h3>
+            <ul className="admin-mini-list">
+              {facultyAssignments.map((a) => (
+                <li key={a.id} className="admin-mini-item">
+                  <span>Event: <strong>{a.event?.title || 'Unknown'}</strong></span>
+                  <span>Assigned: {formatDate(a.assignedAt)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {evaluatorInvitations.length > 0 && (
+          <section className="admin-details-section">
+            <h3>Evaluator Invitations Issued (Recent)</h3>
+            <ul className="admin-mini-list">
+              {evaluatorInvitations.map((inv) => (
+                <li key={inv.id} className="admin-mini-item">
+                  <span>{inv.email} — Event: <strong>{inv.event?.title || 'Unknown'}</strong></span>
+                  <span className={`admin-status-badge status-${inv.status.toLowerCase()}`}>{inv.status}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+
       <footer className="admin-modal-actions">
         <button className="admin-secondary-button" type="button" onClick={onClose}>Close</button>
-        <button className="admin-primary-button" type="button" onClick={() => onEdit(user)}>Edit profile</button>
+        <button className="admin-secondary-button" type="button" onClick={() => { onClose(); onEdit(user); }}>Edit Name</button>
+        {!isSelf && (
+          <>
+            <button className="admin-secondary-button" type="button" onClick={() => { onClose(); onChangeRole(user); }}>Change Role</button>
+            {user.status === 'ACTIVE' ? (
+              <button className="admin-secondary-button action-danger" type="button" onClick={() => { onClose(); onStatusAction(user, 'SUSPENDED', 'Suspend Account'); }}>Suspend</button>
+            ) : (
+              <button className="admin-secondary-button" type="button" onClick={() => { onClose(); onStatusAction(user, 'ACTIVE', 'Reactivate Account'); }}>Reactivate</button>
+            )}
+          </>
+        )}
       </footer>
     </Modal>
   )
 }
 
 export default function AdminUsersPage() {
+  const { user: currentAdmin } = useAuth()
   const [users, setUsers] = useState([])
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [statistics, setStatistics] = useState(null)
@@ -76,6 +180,7 @@ export default function AdminUsersPage() {
   const [submitting, setSubmitting] = useState(false)
   const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [editName, setEditName] = useState('')
+  const [selectedRole, setSelectedRole] = useState('STUDENT')
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(search.trim()), 350)
@@ -132,6 +237,7 @@ export default function AdminUsersPage() {
     setModalUser(user)
     setModal(type)
     setEditName(user?.name || '')
+    setSelectedRole(user?.role || 'STUDENT')
   }
 
   function closeModal() {
@@ -188,6 +294,27 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function submitRoleChange(event) {
+    event.preventDefault()
+    if (!modalUser) return
+    if (selectedRole === modalUser.role) {
+      setActionError('Please select a different role.')
+      return
+    }
+    setActionError('')
+    setSubmitting(true)
+    try {
+      await updateAdminUserRole(modalUser.id, selectedRole)
+      setActionSuccess(`User role successfully changed to ${selectedRole}.`)
+      closeModal()
+      await Promise.all([loadUsers(pagination.page), loadStatistics()])
+    } catch (requestError) {
+      setActionError(getApiErrorMessage(requestError, 'Unable to update user role.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   async function submitFaculty(event) {
     event.preventDefault()
     setActionError('')
@@ -216,11 +343,16 @@ export default function AdminUsersPage() {
   }
 
   function statusAction(user) {
+    const isSelf = user.id === currentAdmin?.id
+    if (isSelf) {
+      return <span style={{ fontSize: '0.72rem', color: 'var(--admin-muted)' }}>Current User</span>
+    }
+
     if (user.status === 'ACTIVE') {
       return (
         <>
           <button type="button" onClick={() => openModal('status', { ...user, nextStatus: 'INACTIVE', actionLabel: 'Deactivate Account' })}>Deactivate</button>
-          <button type="button" onClick={() => openModal('status', { ...user, nextStatus: 'SUSPENDED', actionLabel: 'Suspend Account' })}>Suspend</button>
+          <button type="button" className="action-danger" onClick={() => openModal('status', { ...user, nextStatus: 'SUSPENDED', actionLabel: 'Suspend Account' })}>Suspend</button>
         </>
       )
     }
@@ -233,6 +365,7 @@ export default function AdminUsersPage() {
     { label: 'Total Users', value: statistics.totalUsers, icon: 'users' },
     { label: 'Students', value: statistics.students, icon: 'users' },
     { label: 'Faculty', value: statistics.faculty, icon: 'faculty' },
+    { label: 'Admins', value: statistics.admins ?? 0, icon: 'settings' },
     { label: 'Active Users', value: statistics.activeUsers, icon: 'clipboard' },
     { label: 'Suspended Users', value: statistics.suspendedUsers, icon: 'settings' },
   ] : null
@@ -330,6 +463,9 @@ export default function AdminUsersPage() {
                       <div className="admin-row-actions">
                         <button type="button" onClick={() => void openDetails(user)}>View</button>
                         <button type="button" onClick={() => openModal('edit', user)}>Edit</button>
+                        {user.id !== currentAdmin?.id && (
+                          <button type="button" onClick={() => openModal('role', user)}>Role</button>
+                        )}
                         {statusAction(user)}
                       </div>
                     </td>
@@ -377,8 +513,11 @@ export default function AdminUsersPage() {
       {modal === 'details' && modalUser && (
         <DetailsModal
           user={modalUser}
+          currentAdminId={currentAdmin?.id}
           onClose={closeModal}
           onEdit={(user) => openModal('edit', user)}
+          onChangeRole={(user) => openModal('role', user)}
+          onStatusAction={(user, nextStatus, actionLabel) => openModal('status', { ...user, nextStatus, actionLabel })}
         />
       )}
 
@@ -395,16 +534,63 @@ export default function AdminUsersPage() {
         </Modal>
       )}
 
+      {modal === 'role' && modalUser && (
+        <Modal title="Change User Role" onClose={closeModal}>
+          <form className="admin-modal-form" onSubmit={submitRoleChange}>
+            <div className="admin-confirmation">
+              <p>Change role for <strong>{modalUser.name}</strong> (<code>{modalUser.email}</code>)?</p>
+              <p>Current role: <span className="admin-role-badge">{modalUser.role}</span></p>
+            </div>
+            {actionError && <p className="admin-form-error" role="alert">{actionError}</p>}
+            <label>
+              Select New Role
+              <select value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)} required>
+                <option value="STUDENT">STUDENT</option>
+                <option value="FACULTY">FACULTY</option>
+                <option value="ADMIN">ADMIN</option>
+              </select>
+            </label>
+            {modalUser.role === 'ADMIN' && selectedRole !== 'ADMIN' && (
+              <p className="admin-confirmation-warning">
+                Warning: Removing administrative privileges will immediately revoke this user's admin access.
+              </p>
+            )}
+            {selectedRole === 'ADMIN' && modalUser.role !== 'ADMIN' && (
+              <p className="admin-confirmation-warning">
+                Caution: Granting the ADMIN role allows full management access to users, events, and platform settings.
+              </p>
+            )}
+            <footer className="admin-modal-actions">
+              <button className="admin-secondary-button" type="button" onClick={closeModal}>Cancel</button>
+              <button className="admin-primary-button" type="submit" disabled={submitting || selectedRole === modalUser.role}>
+                {submitting ? 'Updating…' : 'Confirm Role Change'}
+              </button>
+            </footer>
+          </form>
+        </Modal>
+      )}
+
       {modal === 'status' && modalUser && (
         <Modal title={modalUser.actionLabel} onClose={closeModal}>
           <div className="admin-confirmation">
             <p>Change <strong>{modalUser.name}</strong> to <strong>{modalUser.nextStatus}</strong>?</p>
-            {modalUser.nextStatus !== 'ACTIVE' && <p className="admin-confirmation-warning">Active refresh tokens for this account will be revoked.</p>}
+            {modalUser.nextStatus !== 'ACTIVE' && (
+              <p className="admin-confirmation-warning">
+                Active refresh tokens for this account will be revoked. The user will be immediately blocked from accessing protected resources.
+              </p>
+            )}
             {actionError && <p className="admin-form-error" role="alert">{actionError}</p>}
           </div>
           <footer className="admin-modal-actions">
             <button className="admin-secondary-button" type="button" onClick={closeModal}>Cancel</button>
-            <button className="admin-primary-button" type="button" onClick={() => void submitStatusChange()} disabled={submitting}>{submitting ? 'Applying…' : 'Confirm change'}</button>
+            <button
+              className={modalUser.nextStatus === 'SUSPENDED' ? 'admin-danger-button' : 'admin-primary-button'}
+              type="button"
+              onClick={() => void submitStatusChange()}
+              disabled={submitting}
+            >
+              {submitting ? 'Applying…' : 'Confirm change'}
+            </button>
           </footer>
         </Modal>
       )}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHeader from '../../components/admin/PageHeader'
 import StatCard from '../../components/admin/StatCard'
 import EmptyState from '../../components/admin/EmptyState'
@@ -9,6 +9,7 @@ import {
   updateAdminRegistrationStatus,
   getAdminTeams,
   getAdminTeamStatistics,
+  getAdminTeam,
 } from '../../services/teamRegistrationService'
 import { getApiErrorMessage } from '../../services/api'
 
@@ -38,16 +39,25 @@ export default function AdminRegistrationsPage() {
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
   const [details, setDetails] = useState(null)
+  const [teamDetails, setTeamDetails] = useState(null)
   const [review, setReview] = useState(null)
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const debounceRef = useRef(null)
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [search])
 
   const loadRegistrations = useCallback(async (page = 1) => {
     setLoading(true)
     setError('')
     try {
       const [listResult, statsResult] = await Promise.all([
-        getAdminRegistrations({ page, limit: pagination.limit, search, status: status || undefined }),
+        getAdminRegistrations({ page, limit: pagination.limit, search: debouncedSearch, status: status || undefined }),
         getAdminRegistrationStatistics(),
       ])
       setRegistrations(listResult.data?.data?.registrations || [])
@@ -58,14 +68,14 @@ export default function AdminRegistrationsPage() {
     } finally {
       setLoading(false)
     }
-  }, [pagination.limit, search, status])
+  }, [pagination.limit, debouncedSearch, status])
 
   const loadTeams = useCallback(async (page = 1) => {
     setLoading(true)
     setError('')
     try {
       const [listResult, statsResult] = await Promise.all([
-        getAdminTeams({ page, limit: teamPagination.limit, search }),
+        getAdminTeams({ page, limit: teamPagination.limit, search: debouncedSearch }),
         getAdminTeamStatistics(),
       ])
       setTeams(listResult.data?.data?.teams || [])
@@ -76,7 +86,7 @@ export default function AdminRegistrationsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, teamPagination.limit])
+  }, [debouncedSearch, teamPagination.limit])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -91,6 +101,16 @@ export default function AdminRegistrationsPage() {
       setDetails(response.data?.data?.registration || null)
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Unable to load registration details.'))
+    }
+  }
+
+  async function openTeamDetails(id) {
+    setError('')
+    try {
+      const response = await getAdminTeam(id)
+      setTeamDetails(response.data?.data?.team || null)
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Unable to load team details.'))
     }
   }
 
@@ -180,6 +200,10 @@ export default function AdminRegistrationsPage() {
                             <button type="button" onClick={() => setReview({ id: registration.id, status: 'WAITLISTED' })} className="rounded-md px-2 py-1.5 text-xs font-bold text-amber-700">Waitlist</button>
                             <button type="button" onClick={() => setReview({ id: registration.id, status: 'REJECTED' })} className="rounded-md px-2 py-1.5 text-xs font-bold text-red-700">Reject</button>
                           </>}
+                          {registration.status === 'WAITLISTED' && <>
+                            <button type="button" onClick={() => setReview({ id: registration.id, status: 'CONFIRMED' })} className="rounded-md px-2 py-1.5 text-xs font-bold text-emerald-700">Confirm</button>
+                            <button type="button" onClick={() => setReview({ id: registration.id, status: 'REJECTED' })} className="rounded-md px-2 py-1.5 text-xs font-bold text-red-700">Reject</button>
+                          </>}
                         </div>
                       </td>
                     </tr>
@@ -192,8 +216,8 @@ export default function AdminRegistrationsPage() {
           teams.length === 0 ? <EmptyState title="No teams found" description="Teams will appear after students create them." /> : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500"><tr><th className="px-4 py-3">Team</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Leader</th><th className="px-4 py-3">Members</th><th className="px-4 py-3">Status</th></tr></thead>
-                <tbody>{teams.map((team) => <tr key={team.id} className="border-t border-slate-100 text-slate-600"><td className="px-4 py-4 font-semibold text-slate-900">{team.name}</td><td className="px-4 py-4">{team.event.title}</td><td className="px-4 py-4">{team.leader.name}</td><td className="px-4 py-4">{team.members.filter((member) => member.status === 'ACTIVE').length}</td><td className="px-4 py-4"><Badge status={team.status} /></td></tr>)}</tbody>
+                <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500"><tr><th className="px-4 py-3">Team</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Leader</th><th className="px-4 py-3">Members</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th></tr></thead>
+                <tbody>{teams.map((team) => <tr key={team.id} className="border-t border-slate-100 text-slate-600"><td className="px-4 py-4 font-semibold text-slate-900">{team.name}</td><td className="px-4 py-4">{team.event.title}</td><td className="px-4 py-4">{team.leader.name}</td><td className="px-4 py-4">{team.members.filter((member) => member.status === 'ACTIVE').length}</td><td className="px-4 py-4"><Badge status={team.status} /></td><td className="px-4 py-4"><button type="button" onClick={() => void openTeamDetails(team.id)} className="rounded-md px-2 py-1.5 text-xs font-bold text-blue-600">View</button></td></tr>)}</tbody>
               </table>
             </div>
           )
@@ -219,9 +243,33 @@ export default function AdminRegistrationsPage() {
             <header className="flex items-center justify-between border-b border-slate-200 p-5"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Registration details</p><h2 className="mt-1 text-lg font-bold text-slate-900">{details.team.name}</h2></div><button type="button" onClick={() => setDetails(null)} className="grid size-9 place-items-center rounded-lg border border-slate-200">×</button></header>
             <div className="grid gap-4 p-5 text-sm">
               <div className="flex items-center justify-between"><strong>{details.event.title}</strong><Badge status={details.status} /></div>
-              <dl className="grid gap-3 sm:grid-cols-2"><div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Team leader</dt><dd className="mt-1 font-semibold">{details.team.leader.name}</dd></div><div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Submitted</dt><dd className="mt-1 font-semibold">{details.registeredAt ? new Date(details.registeredAt).toLocaleString() : 'Not submitted'}</dd></div></dl>
-              <div><h3 className="font-bold text-slate-900">Members</h3><ul className="mt-2 grid gap-2">{details.team.members.map((member) => <li key={member.id} className="flex justify-between rounded-lg border border-slate-100 px-3 py-2"><span>{member.user.name}</span><span className="text-xs text-slate-500">{member.role} · {member.status}</span></li>)}</ul></div>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Team leader</dt><dd className="mt-1 font-semibold">{details.team.leader.name}<span className="ml-1 text-xs text-slate-400">({details.team.leader.email})</span></dd></div>
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Submitted</dt><dd className="mt-1 font-semibold">{details.registeredAt ? new Date(details.registeredAt).toLocaleString() : 'Not submitted'}</dd></div>
+                {details.reviewedAt && <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Reviewed</dt><dd className="mt-1 font-semibold">{new Date(details.reviewedAt).toLocaleString()}{details.reviewedBy && <span className="ml-1 text-xs text-slate-400">by {details.reviewedBy.name}</span>}</dd></div>}
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Event status</dt><dd className="mt-1"><Badge status={details.event.status} /></dd></div>
+              </dl>
+              <div><h3 className="font-bold text-slate-900">Members</h3><ul className="mt-2 grid gap-2">{details.team.members.map((member) => <li key={member.id} className="flex justify-between rounded-lg border border-slate-100 px-3 py-2"><span className="font-semibold">{member.user.name}<span className="ml-1 text-xs font-normal text-slate-400">{member.user.email}</span></span><span className="text-xs text-slate-500">{member.role} · {member.status}</span></li>)}</ul></div>
+              {details.history && details.history.length > 0 && <div><h3 className="font-bold text-slate-900">Status history</h3><ul className="mt-2 grid gap-1">{details.history.map((entry) => <li key={entry.id} className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-100 px-3 py-2 text-xs text-slate-600"><Badge status={entry.fromStatus} /><span>→</span><Badge status={entry.toStatus} />{entry.changedBy && <span className="text-slate-400">by {entry.changedBy.name}</span>}<span className="text-slate-400">{new Date(entry.createdAt).toLocaleString()}</span>{entry.reason && <span className="w-full text-slate-500 italic">{entry.reason}</span>}</li>)}</ul></div>}
               {details.rejectionReason && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">Rejection reason: {details.rejectionReason}</p>}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {teamDetails && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setTeamDetails(null)}>
+          <section className="max-h-[calc(100svh-32px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true">
+            <header className="flex items-center justify-between border-b border-slate-200 p-5"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Team details</p><h2 className="mt-1 text-lg font-bold text-slate-900">{teamDetails.name}</h2></div><button type="button" onClick={() => setTeamDetails(null)} className="grid size-9 place-items-center rounded-lg border border-slate-200">×</button></header>
+            <div className="grid gap-4 p-5 text-sm">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Event</dt><dd className="mt-1 font-semibold">{teamDetails.event?.title || '—'}</dd></div>
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Team status</dt><dd className="mt-1"><Badge status={teamDetails.status} /></dd></div>
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Leader</dt><dd className="mt-1 font-semibold">{teamDetails.leader?.name}<span className="ml-1 text-xs font-normal text-slate-400">{teamDetails.leader?.email}</span></dd></div>
+                <div className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-400">Created</dt><dd className="mt-1 font-semibold">{new Date(teamDetails.createdAt).toLocaleString()}</dd></div>
+              </dl>
+              <div><h3 className="font-bold text-slate-900">Members ({teamDetails.members?.filter((m) => m.status === 'ACTIVE').length} active)</h3><ul className="mt-2 grid gap-2">{teamDetails.members?.map((member) => <li key={member.id} className="flex justify-between rounded-lg border border-slate-100 px-3 py-2"><span className="font-semibold">{member.user?.name}{member.role === 'LEADER' && <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Leader</span>}<span className="ml-1 text-xs font-normal text-slate-400">{member.user?.email}</span></span><span className="text-xs text-slate-500">{member.status}</span></li>)}</ul></div>
+              {teamDetails.registrations?.length > 0 && <div><h3 className="font-bold text-slate-900">Registrations</h3><ul className="mt-2 grid gap-2">{teamDetails.registrations.map((reg) => <li key={reg.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2"><span className="font-mono text-xs text-slate-500">{reg.id.slice(0, 8)}</span><Badge status={reg.status} />{reg.registeredAt && <span className="text-xs text-slate-400">{new Date(reg.registeredAt).toLocaleString()}</span>}</li>)}</ul></div>}
             </div>
           </section>
         </div>

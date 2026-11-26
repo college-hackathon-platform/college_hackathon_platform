@@ -54,6 +54,13 @@ function getMailConfig() {
     .trim()
     .replace(/^['"]|['"]$/g, '')
     .replace(/\/$/, '');
+  let frontendUrlValid = true;
+  try {
+    const parsed = new URL(frontendUrl);
+    if (!parsed.protocol || !parsed.host) frontendUrlValid = false;
+  } catch {
+    frontendUrlValid = false;
+  }
 
   return {
     configured: Boolean(host && port && user && pass && fromEmail),
@@ -65,6 +72,7 @@ function getMailConfig() {
     fromName,
     fromEmail,
     frontendUrl,
+    frontendUrlValid,
   };
 }
 

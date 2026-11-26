@@ -9,15 +9,19 @@ export function getAdminUserStatistics() {
 }
 
 export function getAdminUserById(userId) {
-  return api.get(`/admin/users/${encodeURIComponent(userId)}`)
+  return api.get('/admin/users/' + encodeURIComponent(userId))
 }
 
 export function updateAdminUser(userId, payload) {
-  return api.patch(`/admin/users/${encodeURIComponent(userId)}`, payload)
+  return api.patch('/admin/users/' + encodeURIComponent(userId), payload)
 }
 
 export function updateAdminUserStatus(userId, status) {
-  return api.patch(`/admin/users/${encodeURIComponent(userId)}/status`, { status })
+  return api.patch('/admin/users/' + encodeURIComponent(userId) + '/status', { status })
+}
+
+export function updateAdminUserRole(userId, role) {
+  return api.patch('/admin/users/' + encodeURIComponent(userId) + '/role', { role })
 }
 
 export function createFaculty(payload) {

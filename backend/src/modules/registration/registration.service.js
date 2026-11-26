@@ -185,13 +185,19 @@ async function updateAdminStatus(adminId, registrationId, status, reason) {
     if (status === 'REJECTED' && !reason) throw httpError(422, 'Rejection reason is required.');
 
     if (status === 'CONFIRMED') {
+      if (registration.event.status === 'CANCELLED') throw httpError(409, 'Cannot confirm a registration for a cancelled event.');
+      if (registration.event.status === 'COMPLETED') throw httpError(409, 'Cannot confirm a registration for a completed event.');
       await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${registration.eventId}::uuid FOR UPDATE`;
       if (registration.event.registrationCapacity !== null) {
-        const occupied = await tx.eventRegistration.count({
-          where: { eventId: registration.eventId, status: { in: ['SUBMITTED', 'CONFIRMED', 'WAITLISTED'] }, id: { not: registrationId } },
+        const confirmed = await tx.eventRegistration.count({
+          where: { eventId: registration.eventId, status: 'CONFIRMED', id: { not: registrationId } },
         });
-        if (occupied >= registration.event.registrationCapacity) throw httpError(409, 'This event is at registration capacity.');
+        if (confirmed >= registration.event.registrationCapacity) throw httpError(409, 'This event is at registration capacity.');
       }
+    }
+
+    if ((status === 'WAITLISTED' || status === 'REJECTED') && ['CANCELLED', 'COMPLETED'].includes(registration.event.status)) {
+      throw httpError(409, `Cannot change registration status for a ${registration.event.status.toLowerCase()} event.`);
     }
 
     await tx.registrationStatusHistory.create({

@@ -18,6 +18,8 @@ const PHONE_PATTERN = /^[+\d][\d\s().-]{6,19}$/
 export default function AdminEvaluatorsPage() {
   const [events, setEvents] = useState([])
   const [eventId, setEventId] = useState('')
+  const selectedEvent = events.find((e) => e.id === eventId) || null
+  const eventInviteBlocked = selectedEvent?.status === 'COMPLETED' || selectedEvent?.status === 'CANCELLED'
   const [invitations, setInvitations] = useState([])
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [search, setSearch] = useState('')
@@ -153,8 +155,9 @@ export default function AdminEvaluatorsPage() {
 
   return (
     <>
-      <PageHeader title="Evaluator Management" description="Create and manage event-specific evaluator invitations." actions={<button type="button" disabled={!eventId} onClick={() => { setFieldErrors({}); setInviteOpen(true) }} className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50">Invite Evaluator</button>} />
+      <PageHeader title="Evaluator Management" description="Create and manage event-specific evaluator invitations." actions={<button type="button" disabled={!eventId || eventInviteBlocked} onClick={() => { setFieldErrors({}); setInviteOpen(true) }} className="min-h-11 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50">Invite Evaluator</button>} />
       {feedback && <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" role="status">{feedback}</div>}
+      {eventInviteBlocked && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700" role="alert">This event is <strong>{selectedEvent.status.toLowerCase()}</strong> — evaluator invitations cannot be created for it.</div>}
       {error && <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert"><span>{error}</span><button type="button" onClick={() => void load(pagination.page)} className="rounded-lg border border-red-200 bg-white px-3 py-2 font-bold">Retry</button></div>}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -173,7 +176,7 @@ export default function AdminEvaluatorsPage() {
               <td className="px-4 py-4"><strong className="block text-slate-900">{invitation.name}</strong><span className="text-slate-500">{invitation.email}</span></td>
               <td className="px-4 py-4 text-slate-700">{invitation.designation}</td>
               <td className="px-4 py-4 text-slate-600">{invitation.organization || '—'}</td>
-              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${invitation.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{invitation.status}</span></td>
+              <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${invitation.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : invitation.status === 'REVOKED' ? 'bg-red-50 text-red-700' : invitation.status === 'EXPIRED' ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-600'}`}>{invitation.status}</span></td>
               <td className="px-4 py-4"><span className={`block rounded-full px-2.5 py-1 text-xs font-bold ${invitation.emailDeliveryStatus === 'SENT' ? 'bg-emerald-50 text-emerald-700' : invitation.emailDeliveryStatus === 'FAILED' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{invitation.emailDeliveryStatus === 'SENT' ? 'Email Sent' : invitation.emailDeliveryStatus === 'FAILED' ? 'Email Failed' : 'Pending Delivery'}</span>{invitation.emailDeliveryError && <small className="mt-1 block max-w-48 text-red-600">{invitation.emailDeliveryError}</small>}</td>
               <td className="px-4 py-4 text-slate-600">{new Date(invitation.expiresAt).toLocaleString()}</td>
               <td className="px-4 py-4"><div className="flex flex-wrap gap-1">{invitation.status === 'PENDING' && <><button type="button" onClick={() => setConfirmation({ type: 'resend', invitation })} className="rounded-md px-2 py-1.5 text-xs font-bold text-emerald-700">Resend</button><button type="button" onClick={() => setConfirmation({ type: 'revoke', invitation })} className="rounded-md px-2 py-1.5 text-xs font-bold text-red-600">Revoke</button><button type="button" onClick={() => setConfirmation({ type: 'regenerate', invitation })} className="rounded-md px-2 py-1.5 text-xs font-bold text-blue-600">Regenerate</button></>}</div></td>

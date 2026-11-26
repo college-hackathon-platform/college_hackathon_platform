@@ -55,7 +55,14 @@ async function listUsers({ page, limit, search, role, status, sortBy, sortOrder 
 async function getUserById(userId) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: SAFE_USER_SELECT,
+    select: {
+      ...SAFE_USER_SELECT,
+      _count: { select: { ledTeams: true, teamMemberships: true, createdEvents: true, reviewedRegistrations: true, facultyAssignments: true, createdEvaluatorInvitations: true } },
+      ledTeams: { select: { id: true, name: true, status: true, event: { select: { id: true, title: true, status: true } } }, take: 5, orderBy: { createdAt: 'desc' } },
+      teamMemberships: { select: { id: true, role: true, status: true, team: { select: { id: true, name: true, event: { select: { id: true, title: true, status: true } }, registrations: { select: { id: true, status: true }, take: 1, orderBy: { createdAt: 'desc' } } } } }, take: 5, orderBy: { createdAt: 'desc' } },
+      facultyAssignments: { select: { id: true, assignedAt: true, event: { select: { id: true, title: true, status: true } } }, take: 5, orderBy: { assignedAt: 'desc' } },
+      createdEvaluatorInvitations: { select: { id: true, email: true, status: true, event: { select: { id: true, title: true, status: true } } }, take: 5, orderBy: { createdAt: 'desc' } },
+    },
   });
 
   if (!user) throw httpError(404, 'User not found.');
@@ -145,6 +152,65 @@ async function updateUserStatus(userId, requestedStatus, adminUserId) {
   throw httpError(409, 'The account status update could not be completed because it conflicted with another change.');
 }
 
+async function updateUserRole(userId, requestedRole, adminUserId) {
+  if (userId === adminUserId) {
+    throw httpError(409, 'Administrators cannot change their own role.');
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
+
+        const target = await tx.user.findUnique({
+          where: { id: userId },
+          select: SAFE_USER_SELECT,
+        });
+
+        if (!target) throw httpError(404, 'User not found.');
+        if (target.role === requestedRole) {
+          return { user: target, changed: false, previousRole: target.role };
+        }
+
+        const removingAdmin = target.role === 'ADMIN' && requestedRole !== 'ADMIN';
+        if (removingAdmin) {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "User"
+            WHERE "role" = 'ADMIN' AND "status" = 'ACTIVE'
+            ORDER BY "id"
+            FOR UPDATE
+          `;
+
+          const activeAdminCount = await tx.user.count({
+            where: { role: 'ADMIN', status: 'ACTIVE' },
+          });
+
+          if (activeAdminCount <= 1) {
+            throw httpError(409, 'The last active Administrator cannot have their role changed.');
+          }
+        }
+
+        const now = new Date();
+        const updated = await tx.user.update({
+          where: { id: userId },
+          data: { role: requestedRole, updatedAt: now },
+          select: SAFE_USER_SELECT,
+        });
+
+        return { user: updated, changed: true, previousRole: target.role };
+      }, { isolationLevel: 'Serializable', timeout: 10000 });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034' && attempt < 2) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw httpError(409, 'The role update could not be completed because it conflicted with another change.');
+}
+
 async function createFaculty({ name, email, password }) {
   const existingUser = await prisma.user.findUnique({
     where: { email },
@@ -174,15 +240,17 @@ async function createFaculty({ name, email, password }) {
 }
 
 async function getUserStatistics() {
-  const [totalUsers, students, faculty, activeUsers, suspendedUsers] = await Promise.all([
+  const [totalUsers, students, faculty, admins, activeUsers, suspendedUsers, inactiveUsers] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: 'STUDENT' } }),
     prisma.user.count({ where: { role: 'FACULTY' } }),
+    prisma.user.count({ where: { role: 'ADMIN' } }),
     prisma.user.count({ where: { status: 'ACTIVE' } }),
     prisma.user.count({ where: { status: 'SUSPENDED' } }),
+    prisma.user.count({ where: { status: 'INACTIVE' } }),
   ]);
 
-  return { totalUsers, students, faculty, activeUsers, suspendedUsers };
+  return { totalUsers, students, faculty, admins, activeUsers, suspendedUsers, inactiveUsers };
 }
 
 module.exports = {
@@ -190,6 +258,7 @@ module.exports = {
   getUserById,
   updateUser,
   updateUserStatus,
+  updateUserRole,
   createFaculty,
   getUserStatistics,
 };

@@ -65,9 +65,11 @@ async function listEvaluators(eventId, payload) {
 async function inviteEvaluator(eventId, payload, createdById) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, title: true, description: true, shortDescription: true, mode: true, startDate: true, endDate: true, venue: true },
+    select: { id: true, title: true, description: true, shortDescription: true, mode: true, startDate: true, endDate: true, venue: true, status: true },
   });
   if (!event) throw httpError(404, 'Event not found.');
+  if (event.status === 'CANCELLED') throw httpError(409, 'Evaluator invitations cannot be created for a cancelled event.');
+  if (event.status === 'COMPLETED') throw httpError(409, 'Evaluator invitations cannot be created for a completed event.');
 
   const existing = await prisma.eventEvaluatorInvitation.findFirst({
     where: { eventId, email: payload.email, status: 'PENDING', expiresAt: { gt: new Date() } },
@@ -143,10 +145,16 @@ async function deliverInvitation(invitation, event, secret) {
         data: { emailDeliveryStatus: 'SENT', emailDeliveryError: null, emailedAt: new Date() },
       });
     } catch (error) {
-      const category = error?.code ? `SMTP error (${error.code})` : 'Email delivery failed';
+      const parts = [];
+      if (error?.code) parts.push(`code=${error.code}`);
+      if (error?.responseCode) parts.push(`smtp=${error.responseCode}`);
+      if (error?.response) parts.push(error.response);
+      else if (error?.message) parts.push(error.message);
+      const detail = parts.join(' | ') || 'Email delivery failed';
+      console.error('[mail] delivery failed:', detail);
       await prisma.eventEvaluatorInvitation.update({
         where: { id: invitation.id },
-        data: { emailDeliveryStatus: 'FAILED', emailDeliveryError: category.slice(0, 500) },
+        data: { emailDeliveryStatus: 'FAILED', emailDeliveryError: detail.slice(0, 500) },
       });
     }
   }
@@ -158,7 +166,6 @@ async function deliverInvitation(invitation, event, secret) {
 
   return {
     invitation: updated,
-    invitationSecret: secret,
     copyableLink: `/evaluator/invitations/${secret}`,
     emailDelivered: delivered,
   };

@@ -13,6 +13,9 @@ function createTransporter() {
       user: config.user,
       pass: config.pass,
     },
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 }
 
